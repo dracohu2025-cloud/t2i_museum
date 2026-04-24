@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "t2i_museum Collector",
+  "version": "0.0.1",
+  "description": "Collect Jimeng image detail works into the local t2i_museum catalog.",
+  "permissions": [
+    "storage",
+    "scripting",
+    "tabs",
+    "webNavigation"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "http://localhost/*",
+    "https://jimeng.jianying.com/*"
+  ],
+  "background": {
+    "service_worker": "background/index.global.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://jimeng.jianying.com/ai-tool/*"
+      ],
+      "js": [
+        "content/index.global.js"
+      ],
+      "run_at": "document_start"
+    }
+  ]
+}

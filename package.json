@@ -1,0 +1,25 @@
+{
+  "name": "t2i-museum",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -b packages/contracts apps/collector apps/extension",
+    "build": "npm run build -w @t2i/contracts && npm run build -w @t2i/collector && npm run build -w @t2i/extension",
+    "dev:collector": "npm run dev -w @t2i/collector",
+    "collect:cdp": "node scripts/collect-jimeng-cdp.mjs"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^24.6.0",
+    "jsdom": "^27.0.1",
+    "tsx": "^4.20.6",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}

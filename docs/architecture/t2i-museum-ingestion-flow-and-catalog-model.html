@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>t2i_museum Ingestion Flow and Catalog Model</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'JetBrains Mono', 'SF Mono', 'PingFang SC', monospace;
+      background: #020617;
+      min-height: 100vh;
+      padding: 2rem;
+      color: white;
+    }
+
+    .container {
+      max-width: 1240px;
+      margin: 0 auto;
+    }
+
+    .header {
+      margin-bottom: 2rem;
+    }
+
+    .header-row {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .pulse-dot {
+      width: 12px;
+      height: 12px;
+      background: #22d3ee;
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: -0.025em;
+    }
+
+    .subtitle {
+      color: #94a3b8;
+      font-size: 0.875rem;
+      margin-left: 1.75rem;
+      max-width: 960px;
+      line-height: 1.6;
+    }
+
+    .diagram-container {
+      background: rgba(15, 23, 42, 0.5);
+      border-radius: 1rem;
+      border: 1px solid #1e293b;
+      padding: 1.5rem;
+      overflow-x: auto;
+    }
+
+    svg {
+      width: 100%;
+      min-width: 1100px;
+      display: block;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1rem;
+      margin-top: 2rem;
+    }
+
+    .card {
+      background: rgba(15, 23, 42, 0.5);
+      border-radius: 0.75rem;
+      border: 1px solid #1e293b;
+      padding: 1.25rem;
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .card-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+
+    .card-dot.cyan { background: #22d3ee; }
+    .card-dot.emerald { background: #34d399; }
+    .card-dot.violet { background: #a78bfa; }
+
+    .card h3 {
+      font-size: 0.875rem;
+      font-weight: 600;
+    }
+
+    .card ul {
+      list-style: none;
+      color: #94a3b8;
+      font-size: 0.75rem;
+      line-height: 1.7;
+    }
+
+    .card li {
+      margin-bottom: 0.375rem;
+    }
+
+    .footer {
+      text-align: center;
+      margin-top: 1.5rem;
+      color: #475569;
+      font-size: 0.75rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="header-row">
+        <div class="pulse-dot"></div>
+        <h1>t2i_museum Ingestion Flow &amp; Catalog Model</h1>
+      </div>
+      <p class="subtitle">
+        Focused view of the automatic museum-ingestion path after clicking <code>COLLECT</code>,
+        plus the core catalog tables that support style growth, alias normalization, and re-analysis over time.
+      </p>
+    </div>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 1180 960" role="img" aria-label="t2i_museum ingestion flow and catalog model diagram">
+        <defs>
+          <marker id="arrowhead-slate" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#64748b" />
+          </marker>
+          <marker id="arrowhead-cyan" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#22d3ee" />
+          </marker>
+          <marker id="arrowhead-emerald" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#34d399" />
+          </marker>
+          <marker id="arrowhead-violet" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#a78bfa" />
+          </marker>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+          </pattern>
+        </defs>
+
+        <rect width="100%" height="100%" fill="url(#grid)" />
+
+        <rect x="40" y="40" width="1100" height="350" rx="12" fill="rgba(251, 191, 36, 0.05)" stroke="#fbbf24" stroke-width="1" stroke-dasharray="8,4"/>
+        <text x="56" y="58" fill="#fbbf24" font-size="10" font-weight="600">AUTO INGESTION PIPELINE</text>
+
+        <line x1="185" y1="155" x2="250" y2="155" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowhead-cyan)" />
+        <text x="218" y="148" fill="#94a3b8" font-size="9" text-anchor="middle">raw payload</text>
+
+        <line x1="400" y1="155" x2="465" y2="155" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead-emerald)" />
+        <text x="432" y="148" fill="#94a3b8" font-size="9" text-anchor="middle">save facts</text>
+
+        <line x1="615" y1="155" x2="680" y2="155" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead-emerald)" />
+        <text x="648" y="148" fill="#94a3b8" font-size="9" text-anchor="middle">cache image</text>
+
+        <line x1="830" y1="155" x2="895" y2="155" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead-emerald)" />
+        <text x="862" y="148" fill="#94a3b8" font-size="9" text-anchor="middle">analyze prompt</text>
+
+        <path d="M 1025 190 L 1025 250 L 940 250 L 940 290" fill="none" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead-emerald)" />
+        <text x="1038" y="229" fill="#94a3b8" font-size="9">merge / upsert</text>
+
+        <path d="M 895 320 L 860 320 L 860 350 L 600 350 L 600 405" fill="none" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowhead-cyan)" />
+        <text x="731" y="343" fill="#94a3b8" font-size="9" text-anchor="middle">catalog ready</text>
+
+        <path d="M 310 190 L 310 250 L 210 250 L 210 300" fill="none" stroke="#64748b" stroke-width="1.5" stroke-dasharray="5,5" marker-end="url(#arrowhead-slate)" />
+        <text x="220" y="242" fill="#94a3b8" font-size="9">retry endpoint</text>
+
+        <rect x="70" y="120" width="115" height="70" rx="8" fill="#0f172a"/>
+        <rect x="70" y="120" width="115" height="70" rx="8" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="127.5" y="142" fill="white" font-size="11" font-weight="600" text-anchor="middle">1. COLLECT</text>
+        <text x="127.5" y="160" fill="#94a3b8" font-size="8" text-anchor="middle">extension reads DOM</text>
+        <text x="127.5" y="173" fill="#94a3b8" font-size="8" text-anchor="middle">workId / prompt / image URL</text>
+
+        <rect x="250" y="120" width="150" height="70" rx="8" fill="#0f172a"/>
+        <rect x="250" y="120" width="150" height="70" rx="8" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="325" y="142" fill="white" font-size="11" font-weight="600" text-anchor="middle">2. Create Work</text>
+        <text x="325" y="160" fill="#94a3b8" font-size="8" text-anchor="middle">ingest_status = pending</text>
+        <text x="325" y="173" fill="#94a3b8" font-size="8" text-anchor="middle">source_work_id dedupe</text>
+
+        <rect x="465" y="120" width="150" height="70" rx="8" fill="#0f172a"/>
+        <rect x="465" y="120" width="150" height="70" rx="8" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="540" y="142" fill="white" font-size="11" font-weight="600" text-anchor="middle">3. Cache Image</text>
+        <text x="540" y="160" fill="#94a3b8" font-size="8" text-anchor="middle">download signed webp</text>
+        <text x="540" y="173" fill="#94a3b8" font-size="8" text-anchor="middle">compute sha256 / size</text>
+
+        <rect x="680" y="120" width="150" height="70" rx="8" fill="#0f172a"/>
+        <rect x="680" y="120" width="150" height="70" rx="8" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="755" y="142" fill="white" font-size="11" font-weight="600" text-anchor="middle">4. Analyze Prompt</text>
+        <text x="755" y="160" fill="#94a3b8" font-size="8" text-anchor="middle">LLM extracts style terms</text>
+        <text x="755" y="173" fill="#94a3b8" font-size="8" text-anchor="middle">typed JSON only</text>
+
+        <rect x="895" y="120" width="130" height="70" rx="8" fill="#0f172a"/>
+        <rect x="895" y="120" width="130" height="70" rx="8" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="960" y="142" fill="white" font-size="11" font-weight="600" text-anchor="middle">Online LLM</text>
+        <text x="960" y="160" fill="#94a3b8" font-size="8" text-anchor="middle">extract / normalize</text>
+        <text x="960" y="173" fill="#94a3b8" font-size="8" text-anchor="middle">explain style meaning</text>
+
+        <rect x="895" y="290" width="160" height="85" rx="8" fill="#0f172a"/>
+        <rect x="895" y="290" width="160" height="85" rx="8" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="975" y="315" fill="white" font-size="11" font-weight="600" text-anchor="middle">5. Normalize &amp; Link</text>
+        <text x="975" y="333" fill="#94a3b8" font-size="8" text-anchor="middle">strip suffixes / hit aliases</text>
+        <text x="975" y="346" fill="#94a3b8" font-size="8" text-anchor="middle">create style if unknown</text>
+        <text x="975" y="359" fill="#94a3b8" font-size="8" text-anchor="middle">write work_styles + explanations</text>
+
+        <rect x="120" y="300" width="180" height="55" rx="8" fill="#0f172a"/>
+        <rect x="120" y="300" width="180" height="55" rx="8" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="210" y="322" fill="white" font-size="10" font-weight="600" text-anchor="middle">Failure Handling</text>
+        <text x="210" y="339" fill="#94a3b8" font-size="8" text-anchor="middle">raw facts survive • partial retry allowed</text>
+
+        <rect x="520" y="405" width="160" height="70" rx="8" fill="#0f172a"/>
+        <rect x="520" y="405" width="160" height="70" rx="8" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="600" y="428" fill="white" font-size="11" font-weight="600" text-anchor="middle">Museum Ready</text>
+        <text x="600" y="446" fill="#94a3b8" font-size="8" text-anchor="middle">done / partial / failed visible</text>
+        <text x="600" y="459" fill="#94a3b8" font-size="8" text-anchor="middle">works and style pages can render</text>
+
+        <rect x="40" y="520" width="1100" height="360" rx="12" fill="rgba(167, 139, 250, 0.04)" stroke="#a78bfa" stroke-width="1" stroke-dasharray="8,4"/>
+        <text x="56" y="538" fill="#a78bfa" font-size="10" font-weight="600">CORE CATALOG DATA MODEL</text>
+
+        <line x1="330" y1="640" x2="420" y2="640" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowhead-violet)" />
+        <text x="375" y="632" fill="#94a3b8" font-size="9" text-anchor="middle">1:N</text>
+
+        <line x1="580" y1="640" x2="670" y2="640" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowhead-violet)" />
+        <text x="625" y="632" fill="#94a3b8" font-size="9" text-anchor="middle">N:1</text>
+
+        <line x1="840" y1="640" x2="930" y2="640" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowhead-violet)" />
+        <text x="885" y="632" fill="#94a3b8" font-size="9" text-anchor="middle">1:N</text>
+
+        <line x1="250" y1="730" x2="250" y2="790" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowhead-violet)" />
+        <text x="264" y="764" fill="#94a3b8" font-size="9">1:N</text>
+
+        <line x1="765" y1="730" x2="765" y2="790" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowhead-violet)" />
+        <text x="779" y="764" fill="#94a3b8" font-size="9">1:N</text>
+
+        <path d="M 1010 730 L 1010 770 L 1080 770 L 1080 585 L 840 585" fill="none" stroke="#22d3ee" stroke-width="1.5" stroke-dasharray="5,5" marker-end="url(#arrowhead-cyan)" />
+        <text x="1052" y="760" fill="#94a3b8" font-size="9">future relink / merge</text>
+
+        <rect x="90" y="585" width="240" height="145" rx="8" fill="#0f172a"/>
+        <rect x="90" y="585" width="240" height="145" rx="8" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="210" y="608" fill="white" font-size="11" font-weight="600" text-anchor="middle">works</text>
+        <text x="106" y="628" fill="#94a3b8" font-size="8">• source_site</text>
+        <text x="106" y="641" fill="#94a3b8" font-size="8">• source_work_id</text>
+        <text x="106" y="654" fill="#94a3b8" font-size="8">• prompt_raw</text>
+        <text x="106" y="667" fill="#94a3b8" font-size="8">• image_source_url / local_path</text>
+        <text x="106" y="680" fill="#94a3b8" font-size="8">• image_sha256 / width / height</text>
+        <text x="106" y="693" fill="#94a3b8" font-size="8">• model_label / aspect_ratio</text>
+        <text x="106" y="706" fill="#94a3b8" font-size="8">• ingest_status / ingest_error</text>
+
+        <rect x="420" y="600" width="160" height="120" rx="8" fill="#0f172a"/>
+        <rect x="420" y="600" width="160" height="120" rx="8" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="500" y="623" fill="white" font-size="11" font-weight="600" text-anchor="middle">work_styles</text>
+        <text x="436" y="645" fill="#94a3b8" font-size="8">• work_id</text>
+        <text x="436" y="658" fill="#94a3b8" font-size="8">• style_id</text>
+        <text x="436" y="671" fill="#94a3b8" font-size="8">• evidence_text</text>
+        <text x="436" y="684" fill="#94a3b8" font-size="8">• confidence</text>
+        <text x="436" y="697" fill="#94a3b8" font-size="8">• is_primary / source</text>
+
+        <rect x="670" y="585" width="170" height="145" rx="8" fill="#0f172a"/>
+        <rect x="670" y="585" width="170" height="145" rx="8" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="755" y="608" fill="white" font-size="11" font-weight="600" text-anchor="middle">styles</text>
+        <text x="686" y="628" fill="#94a3b8" font-size="8">• slug / name</text>
+        <text x="686" y="641" fill="#94a3b8" font-size="8">• term_type</text>
+        <text x="686" y="654" fill="#94a3b8" font-size="8">• status: active / candidate / merged</text>
+        <text x="686" y="667" fill="#94a3b8" font-size="8">• short_description</text>
+        <text x="686" y="680" fill="#94a3b8" font-size="8">• visual_traits / prompt_hints</text>
+        <text x="686" y="693" fill="#94a3b8" font-size="8">• hero_work_id</text>
+
+        <rect x="930" y="600" width="170" height="120" rx="8" fill="#0f172a"/>
+        <rect x="930" y="600" width="170" height="120" rx="8" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="1015" y="623" fill="white" font-size="11" font-weight="600" text-anchor="middle">style_aliases</text>
+        <text x="946" y="645" fill="#94a3b8" font-size="8">• style_id</text>
+        <text x="946" y="658" fill="#94a3b8" font-size="8">• alias_name</text>
+        <text x="946" y="671" fill="#94a3b8" font-size="8">• alias_norm</text>
+        <text x="946" y="684" fill="#94a3b8" font-size="8">• source / confidence</text>
+        <text x="946" y="697" fill="#94a3b8" font-size="8">• merged_from_style_id?</text>
+
+        <rect x="120" y="790" width="260" height="70" rx="8" fill="#0f172a"/>
+        <rect x="120" y="790" width="260" height="70" rx="8" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="250" y="813" fill="white" font-size="11" font-weight="600" text-anchor="middle">analysis_runs</text>
+        <text x="136" y="833" fill="#94a3b8" font-size="8">• work_id • provider • model • prompt_version • raw_response • parsed_result_json • status</text>
+
+        <rect x="635" y="790" width="260" height="70" rx="8" fill="#0f172a"/>
+        <rect x="635" y="790" width="260" height="70" rx="8" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="765" y="813" fill="white" font-size="11" font-weight="600" text-anchor="middle">image_cache / filesystem</text>
+        <text x="651" y="833" fill="#94a3b8" font-size="8">• originals/jimeng/&lt;workId&gt;.webp • stable local assets for museum rendering and later reprocessing</text>
+      </svg>
+    </div>
+
+    <div class="cards">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot cyan"></div>
+          <h3>Pipeline Contract</h3>
+        </div>
+        <ul>
+          <li>• Raw facts are persisted before style analysis, so partial failures are survivable.</li>
+          <li>• Signed source images are cached immediately to avoid later expiration.</li>
+          <li>• Retry should target failed stages, not duplicate the entire collection action.</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot emerald"></div>
+          <h3>Style Growth Model</h3>
+        </div>
+        <ul>
+          <li>• New terms can enter as candidate styles without blocking ingestion.</li>
+          <li>• Alias normalization lets near-identical terms converge on one canonical style.</li>
+          <li>• Human merges should feed back into future automatic classification.</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot violet"></div>
+          <h3>Why This Split</h3>
+        </div>
+        <ul>
+          <li>• Diagram 1 explains system boundaries and runtime actors.</li>
+          <li>• Diagram 2 explains persistence, lifecycle, and vocabulary evolution.</li>
+          <li>• Keeping them separate avoids turning one chart into unreadable sludge.</li>
+        </ul>
+      </div>
+    </div>
+
+    <p class="footer">Generated on 2026-04-21 using the architecture-diagram skill design system • Focused view for collector internals and catalog schema</p>
+  </div>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "name": "@t2i/extension",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsup && node -e \"import('node:fs').then(fs => fs.copyFileSync('public/manifest.json', 'dist/manifest.json'))\"",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@t2i/contracts": "0.0.1"
+  }
+}
