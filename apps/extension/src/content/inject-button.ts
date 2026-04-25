@@ -44,7 +44,10 @@ export function createCollectButtonState(): CollectButtonState {
 }
 
 export function removeCollectUi(root: Document) {
-  root.querySelector('[data-t2i-museum-collect-panel]')?.remove();
+  root.querySelectorAll('[data-t2i-museum-collect-panel]').forEach((el) => el.remove());
+  root.querySelectorAll('[data-t2i-museum-collect]').forEach((el) => {
+    if (el instanceof HTMLButtonElement) el.remove();
+  });
 }
 
 function createFreshButton(root: Document): HTMLButtonElement {
@@ -396,16 +399,66 @@ export function injectCollectButton(
 
   const existing = options.root.querySelector('[data-t2i-museum-collect]');
   if (existing instanceof HTMLButtonElement) {
-    const panelContainer = getPanelContainer(options.root, existing);
-    const panel = panelContainer instanceof HTMLElement ? ensureCollectPanel(options.root, panelContainer) : null;
-    if (panel && existing.parentElement !== panel) {
-      panel.prepend(existing);
+    const nextBindingId = options.bindingId ?? 'default';
+    const stateKey = `${nextBindingId}|${state.status}|${state.message}|${state.progressVisible}|${state.progressPercent}|${state.progressLabel}|${state.progressTone}`;
+
+    // Fast-path: if state hasn't changed and the button structure is intact, do nothing.
+    if (existing.dataset.t2iMuseumLastState === stateKey) {
+      const currentPanel = existing.closest('[data-t2i-museum-collect-panel]') as HTMLElement | null;
+      if (currentPanel) {
+        const hasStatus = currentPanel.querySelector('[data-t2i-museum-collect-status]') instanceof HTMLDivElement;
+        const hasProgress = currentPanel.querySelector('[data-t2i-museum-collect-progress]') instanceof HTMLDivElement;
+        if (hasStatus && hasProgress) {
+          return existing;
+        }
+      }
     }
 
-    const statusNode =
+    // Prefer the button's current panel to avoid jumping when the host page re-renders.
+    const currentPanel = existing.closest('[data-t2i-museum-collect-panel]') as HTMLElement | null;
+
+    let panel: HTMLElement | null = currentPanel;
+    let statusNode: HTMLDivElement | null = null;
+    let progressNode: ReturnType<typeof ensureProgressNode> | null = null;
+
+    if (panel) {
+      statusNode = panel.querySelector('[data-t2i-museum-collect-status]');
+      const progressWrapper = panel.querySelector('[data-t2i-museum-collect-progress]');
+      const progressLabel = progressWrapper?.querySelector('[data-t2i-museum-collect-progress-label]');
+      const progressBar = progressWrapper?.querySelector('[data-t2i-museum-collect-progress-bar]');
+      if (
+        progressWrapper instanceof HTMLDivElement &&
+        progressLabel instanceof HTMLDivElement &&
+        progressBar instanceof HTMLDivElement
+      ) {
+        progressNode = { wrapper: progressWrapper, label: progressLabel, bar: progressBar };
+      }
+    }
+
+    // If the structure is complete, update in-place without querying a new container.
+    if (panel && statusNode instanceof HTMLDivElement && progressNode) {
+      applyButtonState(existing, statusNode, progressNode, state);
+      bindCollectClick(existing, statusNode, state, options);
+      existing.dataset.t2iMuseumLastState = stateKey;
+      return existing;
+    }
+
+    // Fallback: re-locate container, move button, and clean up the old panel.
+    const panelContainer = getPanelContainer(options.root, existing);
+    panel = panelContainer instanceof HTMLElement ? ensureCollectPanel(options.root, panelContainer) : null;
+
+    if (panel && existing.parentElement !== panel) {
+      const oldPanel = existing.closest('[data-t2i-museum-collect-panel]');
+      panel.prepend(existing);
+      if (oldPanel instanceof HTMLElement && oldPanel !== panel) {
+        oldPanel.remove();
+      }
+    }
+
+    statusNode =
       options.root.querySelector('[data-t2i-museum-collect-status]') ??
       (panelContainer instanceof HTMLElement ? ensureStatusNode(options.root, panelContainer) : null);
-    const progressNode =
+    progressNode =
       panelContainer instanceof HTMLElement ? ensureProgressNode(options.root, panelContainer) : null;
 
     if (panel && statusNode instanceof HTMLDivElement && statusNode.parentElement !== panel) {
@@ -418,11 +471,10 @@ export function injectCollectButton(
     if (statusNode instanceof HTMLDivElement && progressNode) {
       applyButtonState(existing, statusNode, progressNode, state);
       bindCollectClick(existing, statusNode, state, options);
+      existing.dataset.t2iMuseumLastState = stateKey;
     }
 
-    return (
-      options.root.querySelector('[data-t2i-museum-collect]') as HTMLButtonElement | null
-    );
+    return existing;
   }
 
   const container = findActionButtonsContainer(options.root);
@@ -460,15 +512,18 @@ export function observeCollectButtonWithState(
     return null;
   }
   let syncTimer = 0;
+  let mutating = false;
 
   const sync = () => {
-    if (syncTimer) {
+    if (syncTimer || mutating) {
       return;
     }
 
     syncTimer = window.setTimeout(() => {
       syncTimer = 0;
+      mutating = true;
       injectCollectButton(options, state);
+      mutating = false;
     }, 0);
   };
 
