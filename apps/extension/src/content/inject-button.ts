@@ -341,16 +341,16 @@ function bindCollectClick(
     return;
   }
 
-  const replacement = button.cloneNode(true) as HTMLButtonElement;
-  replacement.dataset.t2iMuseumBindingId = nextBindingId;
-  button.replaceWith(replacement);
+  button.dataset.t2iMuseumBindingId = nextBindingId;
 
-  replacement.addEventListener('click', async () => {
+  button.onclick = async () => {
+    console.log('[t2i] button onclick fired, status:', state.status);
     if (state.status === 'collecting') {
+      console.log('[t2i] already collecting, ignoring click');
       return;
     }
 
-    setState(replacement, statusNode, state, {
+    setState(button, statusNode, state, {
       status: 'collecting',
       message: '正在发送到本地 collector...',
       progressVisible: true,
@@ -360,8 +360,10 @@ function bindCollectClick(
     });
 
     try {
+      console.log('[t2i] calling onCollect...');
       const result = await options.onCollect();
-      setState(replacement, statusNode, state, {
+      console.log('[t2i] onCollect returned:', result);
+      setState(button, statusNode, state, {
         status: result?.nextStatus ?? 'success',
         message: result?.message ?? '已入馆，可继续收下一张。',
         progressVisible: typeof result?.progressVisible === 'boolean' ? result.progressVisible : state.progressVisible,
@@ -370,7 +372,8 @@ function bindCollectClick(
         progressTone: typeof result?.progressTone === 'string' ? result.progressTone : state.progressTone
       });
     } catch (error) {
-      setState(replacement, statusNode, state, {
+      console.error('[t2i] onCollect threw error:', error);
+      setState(button, statusNode, state, {
         status: 'error',
         message: error instanceof Error ? error.message : '采集失败，请重试。',
         progressVisible: true,
@@ -379,7 +382,7 @@ function bindCollectClick(
         progressTone: 'error'
       });
     }
-  });
+  };
 }
 
 export function injectCollectButton(

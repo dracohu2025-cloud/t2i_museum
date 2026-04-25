@@ -16,7 +16,7 @@ type RuntimeApi = {
         message: unknown,
         sender: unknown,
         sendResponse: (response: unknown) => void
-    ) => boolean | void
+    ) => boolean | void | Promise<unknown>
       ) => void;
   };
 };
@@ -81,23 +81,31 @@ const webNavigationApi = chromeLike?.webNavigation;
 const scriptingApi = chromeLike?.scripting;
 
 async function ensureJimengContentScript(tabId: number, url = '') {
+  console.log('[t2i-bg] ensureJimengContentScript called, tabId:', tabId, 'url:', url);
   if (!scriptingApi?.executeScript) {
+    console.log('[t2i-bg] no scripting API');
     return;
   }
 
   if (!url.startsWith(JIMENG_AI_TOOL_URL_PREFIX)) {
+    console.log('[t2i-bg] url does not match prefix');
     return;
   }
 
   try {
+    console.log('[t2i-bg] executing content script...');
     await scriptingApi.executeScript({
       target: { tabId },
       files: ['content/index.global.js']
     });
+    console.log('[t2i-bg] content script executed, sending sync message');
     await tabsApi?.sendMessage?.(tabId, {
       type: SYNC_JIMENG_ROUTE_RUNTIME_MESSAGE
     });
-  } catch {}
+    console.log('[t2i-bg] sync message sent');
+  } catch (err) {
+    console.error('[t2i-bg] ensureJimengContentScript error:', err);
+  }
 }
 
 function registerNavigationListener(
@@ -123,6 +131,7 @@ function registerNavigationListener(
 }
 
 tabsApi?.onUpdated?.addListener((tabId, changeInfo, tab) => {
+  console.log('[t2i-bg] tabs.onUpdated', tabId, changeInfo);
   if (!changeInfo.url && changeInfo.status !== 'complete') {
     return;
   }
@@ -144,8 +153,9 @@ tabsApi?.onActivated?.addListener((activeInfo) => {
 registerNavigationListener(webNavigationApi?.onCommitted);
 registerNavigationListener(webNavigationApi?.onCompleted);
 registerNavigationListener(webNavigationApi?.onHistoryStateUpdated);
+console.log('[t2i-bg] background listeners registered');
 
-runtimeApi?.onMessage?.addListener((message, _sender, sendResponse) => {
+runtimeApi?.onMessage?.addListener((message) => {
   if (!message || typeof message !== 'object') {
     return;
   }
@@ -154,43 +164,42 @@ runtimeApi?.onMessage?.addListener((message, _sender, sendResponse) => {
 
   if (messageType === LOOKUP_WORK_PROGRESS_RUNTIME_MESSAGE) {
     const sourceWorkId = (message as { sourceWorkId?: string }).sourceWorkId ?? '';
+    console.log('[t2i-bg] lookup work progress:', sourceWorkId);
 
-    void (async () => {
+    return (async () => {
       try {
         const response = await fetch(`${LOCAL_WORKS_API_URL}/${encodeURIComponent(sourceWorkId)}`, {
           signal: AbortSignal.timeout(5_000)
         });
 
         if (response.status === 404) {
-          sendResponse({
+          return {
             ok: true,
             found: false,
             data: null
-          });
-          return;
+          };
         }
 
         const data = await response.json();
-        sendResponse({
+        return {
           ok: response.ok,
           found: response.ok,
           data
-        });
+        };
       } catch (error) {
-        sendResponse({
+        return {
           ok: false,
           error: error instanceof Error ? error.message : 'work progress lookup failed'
-        });
+        };
       }
     })();
-
-    return true;
   }
 
   if (messageType === COLLECT_PREVIEW_RUNTIME_MESSAGE) {
     const payload = (message as { payload?: unknown }).payload;
+    console.log('[t2i-bg] collect preview request');
 
-    void (async () => {
+    return (async () => {
       try {
         const response = await fetch(LOCAL_COLLECT_PREVIEW_API_URL, {
           method: 'POST',
@@ -202,11 +211,11 @@ runtimeApi?.onMessage?.addListener((message, _sender, sendResponse) => {
         });
         const data = await response.json();
 
-        sendResponse({
+        return {
           ok: response.ok,
           status: response.status,
           data
-        });
+        };
       } catch (error) {
         const message =
           error instanceof Error && error.name === 'TimeoutError'
@@ -217,14 +226,12 @@ runtimeApi?.onMessage?.addListener((message, _sender, sendResponse) => {
                 ? error.message
                 : '风格预分析失败';
 
-        sendResponse({
+        return {
           ok: false,
           error: message
-        });
+        };
       }
     })();
-
-    return true;
   }
 
   if (messageType !== COLLECT_RUNTIME_MESSAGE) {
@@ -232,8 +239,9 @@ runtimeApi?.onMessage?.addListener((message, _sender, sendResponse) => {
   }
 
   const payload = (message as { payload?: unknown }).payload;
+  console.log('[t2i-bg] collect request');
 
-  void (async () => {
+  return (async () => {
     try {
       const response = await fetch(LOCAL_COLLECT_API_URL, {
         method: 'POST',
@@ -245,7 +253,7 @@ runtimeApi?.onMessage?.addListener((message, _sender, sendResponse) => {
       });
       const data = await response.json();
 
-      sendResponse({
+      return {
         ok: response.ok,
         status: response.status,
         data,
@@ -255,7 +263,7 @@ runtimeApi?.onMessage?.addListener((message, _sender, sendResponse) => {
             : data?.status === 'accepted'
               ? '采集请求已发送，正在下载图片并分析风格。'
               : 'collector 已返回结果。'
-      });
+      };
     } catch (error) {
       const message =
         error instanceof Error && error.name === 'TimeoutError'
@@ -266,12 +274,10 @@ runtimeApi?.onMessage?.addListener((message, _sender, sendResponse) => {
               ? error.message
               : 'collector 请求失败';
 
-      sendResponse({
+      return {
         ok: false,
         error: message
-      });
+      };
     }
   })();
-
-  return true;
 });
