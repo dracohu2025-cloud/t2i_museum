@@ -21,6 +21,9 @@ export interface ObserveCollectButtonOptions extends InjectCollectButtonOptions 
 export type CollectButtonStatus = 'idle' | 'collecting' | 'success' | 'error';
 export type CollectProgressTone = 'idle' | 'active' | 'success' | 'error';
 
+const CREATE_COOLDOWN_MS = 1500;
+const lastCreateTimeByRoot = new WeakMap<Document, number>();
+
 export interface CollectButtonState {
   status: CollectButtonStatus;
   message: string;
@@ -398,7 +401,10 @@ export function injectCollectButton(
   }
 
   const existing = options.root.querySelector('[data-t2i-museum-collect]');
-  if (existing instanceof HTMLButtonElement) {
+  const hasExisting = existing instanceof HTMLButtonElement;
+  console.log('[t2i] injectCollectButton called, existing:', hasExisting, 'status:', state.status);
+
+  if (hasExisting) {
     const nextBindingId = options.bindingId ?? 'default';
     const stateKey = `${nextBindingId}|${state.status}|${state.message}|${state.progressVisible}|${state.progressPercent}|${state.progressLabel}|${state.progressTone}`;
 
@@ -409,6 +415,7 @@ export function injectCollectButton(
         const hasStatus = currentPanel.querySelector('[data-t2i-museum-collect-status]') instanceof HTMLDivElement;
         const hasProgress = currentPanel.querySelector('[data-t2i-museum-collect-progress]') instanceof HTMLDivElement;
         if (hasStatus && hasProgress) {
+          console.log('[t2i] fast-path: state unchanged, structure intact');
           return existing;
         }
       }
@@ -437,6 +444,7 @@ export function injectCollectButton(
 
     // If the structure is complete, update in-place without querying a new container.
     if (panel && statusNode instanceof HTMLDivElement && progressNode) {
+      console.log('[t2i] in-place update: structure complete');
       applyButtonState(existing, statusNode, progressNode, state);
       bindCollectClick(existing, statusNode, state, options);
       existing.dataset.t2iMuseumLastState = stateKey;
@@ -444,6 +452,7 @@ export function injectCollectButton(
     }
 
     // Fallback: re-locate container, move button, and clean up the old panel.
+    console.log('[t2i] fallback: moving button to new container');
     const panelContainer = getPanelContainer(options.root, existing);
     panel = panelContainer instanceof HTMLElement ? ensureCollectPanel(options.root, panelContainer) : null;
 
@@ -477,6 +486,13 @@ export function injectCollectButton(
     return existing;
   }
 
+  const now = Date.now();
+  const lastCreateTime = lastCreateTimeByRoot.get(options.root) ?? 0;
+  if (now - lastCreateTime < CREATE_COOLDOWN_MS) {
+    console.log('[t2i] button missing but in cooldown, skipping recreate');
+    return null;
+  }
+
   const container = findActionButtonsContainer(options.root);
   if (!(container instanceof HTMLElement)) {
     return null;
@@ -494,6 +510,8 @@ export function injectCollectButton(
 
   panel.prepend(button);
   bindCollectClick(button, nextStatusNode, state, options);
+  lastCreateTimeByRoot.set(options.root, Date.now());
+  console.log('[t2i] button recreated after cooldown');
   return (
     options.root.querySelector('[data-t2i-museum-collect]') as HTMLButtonElement | null
   );
@@ -513,18 +531,24 @@ export function observeCollectButtonWithState(
   }
   let syncTimer = 0;
   let mutating = false;
+  const MIN_SYNC_INTERVAL_MS = 200;
+  let lastSyncTime = 0;
 
   const sync = () => {
     if (syncTimer || mutating) {
       return;
     }
 
+    const now = Date.now();
+    const delay = Math.max(0, MIN_SYNC_INTERVAL_MS - (now - lastSyncTime));
+
     syncTimer = window.setTimeout(() => {
       syncTimer = 0;
+      lastSyncTime = Date.now();
       mutating = true;
       injectCollectButton(options, state);
       mutating = false;
-    }, 0);
+    }, delay);
   };
 
   const observer = new MutationObserver(() => {
@@ -533,9 +557,7 @@ export function observeCollectButtonWithState(
 
   observer.observe(observerRoot, {
     childList: true,
-    subtree: true,
-    attributes: true,
-    attributeFilter: ['class', 'style', 'data-state']
+    subtree: true
   });
 
   sync();
