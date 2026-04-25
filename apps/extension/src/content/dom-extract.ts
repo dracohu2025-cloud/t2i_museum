@@ -79,12 +79,33 @@ function isAspectRatioMatch(candidateRatio: number, expectedRatio: number) {
     return false;
   }
 
-  return Math.abs(Math.log(candidateRatio / expectedRatio)) <= 0.4;
+  const ratio = candidateRatio / expectedRatio;
+  return ratio >= 0.9 && ratio <= 1.1;
+}
+
+function findPromptElement(root: Document): Element | null {
+  const selectors = [
+    '.prompt-value-container-lIP4pF',
+    '.prompt-value-text-cJL62n',
+    '.prompt-value-H7u3lm'
+  ];
+
+  for (const selector of selectors) {
+    const el = root.querySelector(selector);
+    if (el) {
+      return el;
+    }
+  }
+
+  return Array.from(root.querySelectorAll('*')).find(
+    (element) => textOf(element) === '图片提示词'
+  ) ?? null;
 }
 
 function findPrimaryImage(root: Document, expectedAspectRatio?: string): HTMLImageElement | undefined {
   const expectedRatio = parseAspectRatio(expectedAspectRatio ?? '');
-  const candidates = Array.from(root.images)
+
+  let candidates = Array.from(root.images)
     .filter((image) => {
       const src = image.currentSrc || image.src;
       if (!src || src.startsWith('data:') || !isVisibleImage(root, image)) {
@@ -92,12 +113,51 @@ function findPrimaryImage(root: Document, expectedAspectRatio?: string): HTMLIma
       }
 
       const metrics = getImageMetrics(image);
+      // Exclude tiny images (avatars, icons) that cannot be the main artwork.
+      if (metrics.width < 80 || metrics.height < 80) {
+        return false;
+      }
+
       return metrics.area > 0;
     })
     .map((image) => ({
       image,
-      metrics: getImageMetrics(image)
+      metrics: getImageMetrics(image),
+      isLoaded: image.naturalWidth > 0
     }));
+
+  // Prefer already-loaded images so that a lazy-loaded main image
+  // doesn't lose to an already-loaded thumbnail.
+  const loaded = candidates.filter((c) => c.isLoaded);
+  if (loaded.length > 0) {
+    candidates = loaded;
+  }
+
+  // Prefer images above the prompt element (main image is typically
+  // above the prompt; recommendations are usually below).
+  const promptEl = findPromptElement(root);
+  if (promptEl) {
+    const promptRect = promptEl.getBoundingClientRect();
+    const abovePrompt = candidates.filter((c) => {
+      const rect = c.image.getBoundingClientRect();
+      return rect.bottom < promptRect.top + 20;
+    });
+    if (abovePrompt.length > 0) {
+      candidates = abovePrompt;
+    }
+  }
+
+  console.log(
+    '[t2i-extract] image candidates after filters:',
+    candidates.map((c) => ({
+      src: (c.image.currentSrc || c.image.src).slice(0, 120),
+      width: c.metrics.width,
+      height: c.metrics.height,
+      ratio: c.metrics.ratio.toFixed(2),
+      expectedRatio: expectedRatio?.toFixed(2),
+      isLoaded: c.isLoaded
+    }))
+  );
 
   const ratioMatched = expectedRatio
     ? candidates.filter((candidate) => isAspectRatioMatch(candidate.metrics.ratio, expectedRatio))
@@ -105,19 +165,15 @@ function findPrimaryImage(root: Document, expectedAspectRatio?: string): HTMLIma
 
   const pool = ratioMatched.length > 0 ? ratioMatched : candidates;
 
-  return pool
-    .sort((left, right) => {
-      if (expectedRatio) {
-        const ratioDelta =
-          Math.abs(left.metrics.ratio - expectedRatio) - Math.abs(right.metrics.ratio - expectedRatio);
-        if (ratioDelta !== 0) {
-          return ratioDelta;
-        }
-      }
-
-      return right.metrics.area - left.metrics.area;
-    })
+  const winner = pool
+    .sort((left, right) => right.metrics.area - left.metrics.area)
     .map((candidate) => candidate.image)[0];
+
+  if (winner) {
+    console.log('[t2i-extract] selected image:', (winner.currentSrc || winner.src).slice(0, 120));
+  }
+
+  return winner;
 }
 
 function findAuthorAndDate(root: Document) {
@@ -146,13 +202,27 @@ export function extractJimengDetailPayload(root: Document): CollectWorkPayload {
   const { authorName, publishedAt } = findAuthorAndDate(root);
   const aspectRatio = findTagText(root, (value) => /^\d+:\d+$/.test(value));
   const image = findPrimaryImage(root, aspectRatio);
+  const imageSourceUrl = image?.currentSrc || image?.src || '';
+
+  if (!imageSourceUrl) {
+    throw new Error(
+      'failed to locate primary image: no suitable image found on the detail page'
+    );
+  }
+
+  console.log('[t2i-extract] payload extracted:', {
+    workId,
+    imageSourceUrl: imageSourceUrl.slice(0, 120),
+    aspectRatio,
+    imageSize: image ? `${image.naturalWidth}x${image.naturalHeight}` : 'unknown'
+  });
 
   return {
     sourceSite: 'jimeng',
     sourceWorkId: workId,
     sourceUrl: url,
     promptRaw: findPrompt(root),
-    imageSourceUrl: image?.currentSrc || image?.src || '',
+    imageSourceUrl,
     authorName,
     publishedAt,
     modelLabel: findTagText(root, (value) => /^图片\s*\d+(?:\.\d+)?$/u.test(value)),
