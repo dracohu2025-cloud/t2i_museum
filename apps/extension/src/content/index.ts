@@ -783,8 +783,11 @@ function bootstrap() {
       }
 
       if (!progressResult.exists && !cachedProgress) {
-        resetButtonState();
-        injectCollectButton(options, buttonState);
+        // Only reset if the user hasn't already clicked COLLECT on this page.
+        if (buttonState.status === 'idle') {
+          resetButtonState();
+          injectCollectButton(options, buttonState);
+        }
         return;
       }
 
