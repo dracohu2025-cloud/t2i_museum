@@ -42,6 +42,21 @@ export interface DeleteWorkResult {
 export class WorkRepository {
   constructor(private readonly db: Database.Database) {}
 
+  getWorkIdBySourceWorkId(sourceWorkId: string): number | undefined {
+    const work = this.db
+      .prepare(
+        `
+          SELECT id
+          FROM works
+          WHERE source_work_id = ?
+          LIMIT 1
+        `
+      )
+      .get(sourceWorkId) as { id: number } | undefined;
+
+    return work?.id;
+  }
+
   createPendingWork(payload: CollectWorkPayload): CreateWorkResult {
     const existing = this.db
       .prepare(

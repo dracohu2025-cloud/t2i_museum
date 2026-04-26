@@ -656,6 +656,141 @@ export function renderMuseumPage() {
         height: 16px;
       }
 
+      .style-edit-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 60;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: rgba(3, 8, 14, 0.66);
+        backdrop-filter: blur(10px);
+      }
+
+      .style-edit-panel {
+        width: min(1180px, 94vw);
+        max-height: 86vh;
+        overflow: auto;
+        border-radius: 24px;
+        border: 1px solid rgba(148, 163, 184, 0.22);
+        background:
+          radial-gradient(circle at top right, rgba(34, 211, 238, 0.12), transparent 28%),
+          linear-gradient(180deg, rgba(7, 18, 30, 0.98), rgba(5, 14, 24, 0.97));
+        box-shadow: 0 26px 80px rgba(0, 0, 0, 0.48);
+        padding: 24px;
+      }
+
+      .style-edit-head h3 {
+        margin: 0 0 10px;
+        font-family: "Cormorant Garamond", serif;
+        font-size: 36px;
+        font-weight: 700;
+      }
+
+      .style-edit-head p {
+        margin: 0 0 18px;
+        color: var(--muted);
+        line-height: 1.7;
+      }
+
+      .style-edit-grid {
+        display: grid;
+        grid-template-columns: minmax(300px, 0.82fr) minmax(420px, 1.18fr);
+        gap: 16px;
+        align-items: start;
+      }
+
+      .style-edit-prompt,
+      .style-edit-row {
+        border: 1px solid rgba(148, 163, 184, 0.22);
+        border-radius: 16px;
+        background: rgba(2, 6, 23, 0.58);
+      }
+
+      .style-edit-prompt {
+        max-height: 54vh;
+        overflow: auto;
+        padding: 14px;
+      }
+
+      .style-edit-label {
+        margin-bottom: 10px;
+        color: var(--accent);
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      .style-edit-prompt-text {
+        white-space: pre-wrap;
+        word-break: break-word;
+        color: #d7e2ed;
+        font-size: 14px;
+        line-height: 1.75;
+      }
+
+      .style-edit-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .style-edit-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 150px auto;
+        gap: 10px;
+        align-items: center;
+        padding: 12px;
+      }
+
+      .style-edit-field label {
+        display: block;
+        margin-bottom: 6px;
+        color: var(--accent);
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+      }
+
+      .style-edit-field input,
+      .style-edit-row select {
+        width: 100%;
+        height: 38px;
+        border-radius: 12px;
+        border: 1px solid rgba(148, 163, 184, 0.28);
+        background: rgba(2, 6, 23, 0.72);
+        color: var(--text);
+        font: inherit;
+      }
+
+      .style-edit-field input {
+        padding: 0 12px;
+      }
+
+      .style-edit-row select {
+        padding: 0 10px;
+      }
+
+      .style-edit-meta {
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .style-edit-actions {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        margin-top: 18px;
+      }
+
+      .style-edit-actions-right {
+        display: flex;
+        gap: 10px;
+      }
+
       .admin-grid {
         display: grid;
         grid-template-columns: minmax(0, 1.3fr) minmax(320px, 0.9fr);
@@ -898,6 +1033,10 @@ export function renderMuseumPage() {
           grid-template-columns: 1fr;
         }
 
+        .style-edit-grid {
+          grid-template-columns: 1fr;
+        }
+
         .style-list {
           max-height: min(52vh, 520px);
         }
@@ -963,6 +1102,14 @@ export function renderMuseumPage() {
         }
 
         .meta-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .style-edit-panel {
+          padding: 18px;
+        }
+
+        .style-edit-row {
           grid-template-columns: 1fr;
         }
 
@@ -1276,6 +1423,7 @@ export function renderMuseumPage() {
               <div class="button-row related-head">
                 <a class="action-button" href="\${escapeHtml(detail.sourceUrl)}" target="_blank" rel="noreferrer">打开来源页</a>
                 \${visibleStyles[0] ? \`<a class="action-button" data-variant="ghost" href="/museum/styles/\${encodeURIComponent(visibleStyles[0].slug)}">查看主风格</a>\` : ''}
+                <button class="action-button" data-variant="ghost" id="work-style-edit-trigger" type="button">编辑关键词</button>
               </div>
 
               <div class="detail-utility-row">
@@ -1375,13 +1523,183 @@ export function renderMuseumPage() {
         \`;
       }
 
+      function renderStyleTypeOptions(currentType) {
+        return [
+          'aesthetic_style',
+          'medium_rendering',
+          'artist_style',
+          'movement_style',
+          'quality_modifier',
+          'subject_content',
+          'mood_atmosphere'
+        ]
+          .map(
+            (termType) =>
+              \`<option value="\${termType}" \${termType === currentType ? 'selected' : ''}>\${escapeHtml(getTermTypeLabel(termType))}</option>\`
+          )
+          .join('');
+      }
+
+      function openWorkStyleEditor(detail) {
+        const existing = document.getElementById('work-style-edit-overlay');
+        existing?.remove();
+
+        const rows = getVisibleStyleTags(detail.styles).map((style) => {
+          const styleSummary = state.styles.find((item) => item.slug === style.slug);
+          return {
+            name: style.name,
+            originalTerm: style.name,
+            termType: styleSummary?.termType || 'aesthetic_style',
+            shortExplanation: '用户在 museum 中保留的风格关键词。'
+          };
+        });
+
+        const overlay = document.createElement('section');
+        overlay.className = 'style-edit-overlay';
+        overlay.id = 'work-style-edit-overlay';
+        overlay.setAttribute('role', 'dialog');
+        overlay.setAttribute('aria-modal', 'true');
+        overlay.setAttribute('aria-label', '编辑入馆风格关键词');
+        document.body.appendChild(overlay);
+        document.body.style.overflow = 'hidden';
+
+        const closeEditor = () => {
+          overlay.remove();
+          document.body.style.overflow = '';
+        };
+
+        const renderRows = () => {
+          overlay.innerHTML = \`
+            <div class="style-edit-panel">
+              <div class="style-edit-head">
+                <h3>编辑入馆风格关键词</h3>
+                <p>每一行都是可直接编辑的最终风格词。保存后会重写这张作品的风格标签，并刷新 museum。</p>
+              </div>
+              <div class="style-edit-grid">
+                <aside class="style-edit-prompt">
+                  <div class="style-edit-label">原始 Prompt</div>
+                  <div class="style-edit-prompt-text">\${escapeHtml(detail.promptRaw || '未读取到原始 Prompt。')}</div>
+                </aside>
+                <div class="style-edit-list">
+                  \${rows
+                    .map(
+                      (row, index) => \`
+                        <article class="style-edit-row" data-style-edit-row="\${index}">
+                          <div class="style-edit-field">
+                            <label for="style-edit-name-\${index}">风格词（可直接编辑）</label>
+                            <input id="style-edit-name-\${index}" data-style-edit-name="\${index}" value="\${escapeHtml(row.name)}" autocomplete="off" spellcheck="false" />
+                            <div class="style-edit-meta">原词：\${escapeHtml(row.originalTerm || '手动添加')}</div>
+                          </div>
+                          <select data-style-edit-type="\${index}" aria-label="风格类型">
+                            \${renderStyleTypeOptions(row.termType)}
+                          </select>
+                          <button class="action-button" data-variant="danger" data-style-edit-remove="\${index}" type="button">删除</button>
+                        </article>
+                      \`
+                    )
+                    .join('')}
+                </div>
+              </div>
+              <div class="style-edit-actions">
+                <button class="action-button" data-style-edit-add type="button">添加关键词</button>
+                <div class="style-edit-actions-right">
+                  <button class="action-button" data-variant="ghost" data-style-edit-cancel type="button">取消</button>
+                  <button class="action-button" data-style-edit-save type="button">保存关键词</button>
+                </div>
+              </div>
+            </div>
+          \`;
+
+          overlay.querySelectorAll('[data-style-edit-name]').forEach((input) => {
+            input.addEventListener('input', () => {
+              const index = Number(input.getAttribute('data-style-edit-name'));
+              rows[index].name = input.value;
+            });
+          });
+
+          overlay.querySelectorAll('[data-style-edit-type]').forEach((select) => {
+            select.addEventListener('change', () => {
+              const index = Number(select.getAttribute('data-style-edit-type'));
+              rows[index].termType = select.value;
+            });
+          });
+
+          overlay.querySelectorAll('[data-style-edit-remove]').forEach((button) => {
+            button.addEventListener('click', () => {
+              const index = Number(button.getAttribute('data-style-edit-remove'));
+              rows.splice(index, 1);
+              renderRows();
+            });
+          });
+
+          overlay.querySelector('[data-style-edit-add]')?.addEventListener('click', () => {
+            rows.push({
+              name: '',
+              originalTerm: '手动添加',
+              termType: 'aesthetic_style',
+              shortExplanation: '用户在 museum 中手动添加的风格关键词。'
+            });
+            renderRows();
+          });
+
+          overlay.querySelector('[data-style-edit-cancel]')?.addEventListener('click', closeEditor);
+
+          overlay.querySelector('[data-style-edit-save]')?.addEventListener('click', async () => {
+            const seen = new Set();
+            const approvedStyles = rows
+              .map((row) => ({
+                name: String(row.name || '').trim(),
+                termType: row.termType,
+                shortExplanation:
+                  String(row.name || '').trim() === row.originalTerm
+                    ? row.shortExplanation
+                    : \`用户在 museum 中将“\${row.originalTerm}”修订为“\${String(row.name || '').trim()}”。\`
+              }))
+              .filter((row) => {
+                if (!row.name || seen.has(row.name)) {
+                  return false;
+                }
+
+                seen.add(row.name);
+                return true;
+              });
+
+            try {
+              await requestJson('/api/works/' + encodeURIComponent(detail.sourceWorkId) + '/styles', {
+                method: 'PATCH',
+                body: JSON.stringify({ approvedStyles })
+              });
+              closeEditor();
+              setFlash('success', '作品风格关键词已更新。');
+              await loadMuseumState('', detail.sourceWorkId, false);
+            } catch (error) {
+              setFlash('error', error instanceof Error ? error.message : 'work_style_update_failed');
+              closeEditor();
+              await loadMuseumState('', detail.sourceWorkId, false);
+            }
+          });
+        };
+
+        overlay.addEventListener('click', (event) => {
+          if (event.target === overlay) {
+            closeEditor();
+          }
+        });
+
+        renderRows();
+      }
+
       function bindWorkDetailActions(detail) {
+        const styleEditButton = document.getElementById('work-style-edit-trigger');
         const deleteButton = document.getElementById('work-delete-trigger');
-        if (!deleteButton) {
-          return;
+
+        if (styleEditButton) {
+          styleEditButton.addEventListener('click', () => {
+            openWorkStyleEditor(detail);
+          });
         }
 
-        deleteButton.addEventListener('click', async () => {
+        deleteButton?.addEventListener('click', async () => {
           if (!window.confirm('确认删除这张作品吗？这个动作会把它从 museum 数据库与风格映射中移除。')) {
             return;
           }

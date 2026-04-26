@@ -519,6 +519,75 @@ describe('OpenAIStyleAnalyzer', () => {
     ]);
   });
 
+  it('supplements obvious medium tags such as oil painting when the model misses them', async () => {
+    const fetchMock = vi.fn(async () => {
+      return new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  candidates: [
+                    {
+                      rawTerm: 'BJD',
+                      normalizedCandidate: 'BJD',
+                      termType: 'aesthetic_style',
+                      confidence: 0.86,
+                      shouldBeStyleTag: true,
+                      shortExplanation: 'prompt 中显式出现的人偶审美风格'
+                    },
+                    {
+                      rawTerm: '水墨',
+                      normalizedCandidate: '水墨',
+                      termType: 'medium_rendering',
+                      confidence: 0.9,
+                      shouldBeStyleTag: true,
+                      shortExplanation: 'prompt 中显式出现的媒介渲染词'
+                    }
+                  ]
+                })
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            'content-type': 'application/json'
+          }
+        }
+      );
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    const analyzer = new OpenAIStyleAnalyzer({
+      apiKey: 'test-key',
+      model: 'openai/gpt-5-mini',
+      baseUrl: 'https://api.openai.com/v1',
+      timeoutMs: 15000,
+      promptVersion: 'v1'
+    });
+
+    const result = await analyzer.analyzePrompt({
+      promptRaw: '油画重彩，色彩饱满，绝代美人，BJD风格美人，全身写真，水墨渲染。'
+    });
+
+    expect(result.candidates).toEqual([
+      expect.objectContaining({
+        normalizedCandidate: 'BJD'
+      }),
+      expect.objectContaining({
+        normalizedCandidate: '水墨'
+      }),
+      expect.objectContaining({
+        normalizedCandidate: '油画',
+        termType: 'medium_rendering',
+        shouldBeStyleTag: true
+      })
+    ]);
+  });
+
   it('splits watercolor fused with ink wash into two medium style tags', async () => {
     const fetchMock = vi.fn(async () => {
       return new Response(

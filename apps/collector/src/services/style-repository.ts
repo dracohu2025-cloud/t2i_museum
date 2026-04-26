@@ -298,7 +298,7 @@ export class StyleRepository {
     return this.getStyleById(targetStyleId);
   }
 
-  private getStyleById(styleId: number): EditableStyleRecord | undefined {
+  getStyleById(styleId: number): EditableStyleRecord | undefined {
     return this.db
       .prepare(
         `

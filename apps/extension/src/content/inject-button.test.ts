@@ -138,6 +138,68 @@ describe('injectCollectButton', () => {
     observer?.disconnect();
   });
 
+  it('injects when the action area class is added after the initial observer sync', async () => {
+    document.body.innerHTML = `<main id="app"><div id="late"></div></main>`;
+
+    const observer = observeCollectButton({
+      root: document,
+      onCollect: vi.fn()
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    const fallbackPanel = document.querySelector('[data-t2i-museum-collect-panel]') as HTMLDivElement | null;
+    expect(document.querySelector('[data-t2i-museum-collect]')).toBeInstanceOf(HTMLButtonElement);
+    expect(fallbackPanel?.dataset.t2iMuseumCollectFloating).toBe('true');
+
+    document.querySelector('#late')?.setAttribute('class', 'action-buttons-wrapper-late');
+    await new Promise((resolve) => setTimeout(resolve, 250));
+
+    const inlinePanel = document.querySelector('[data-t2i-museum-collect-panel]') as HTMLDivElement | null;
+    expect(document.querySelectorAll('[data-t2i-museum-collect]')).toHaveLength(1);
+    expect(inlinePanel?.dataset.t2iMuseumCollectFloating).toBe('false');
+    expect(document.querySelector('#late')?.nextElementSibling).toBe(inlinePanel);
+
+    observer?.disconnect();
+  });
+
+  it('uses a stable fallback panel when Jimeng action buttons are missing', () => {
+    document.body.innerHTML = `<main id="app"></main>`;
+
+    const button = injectCollectButton({
+      root: document,
+      onCollect: vi.fn()
+    });
+    const panel = document.querySelector('[data-t2i-museum-collect-panel]') as HTMLDivElement | null;
+
+    expect(button).toBeInstanceOf(HTMLButtonElement);
+    expect(panel).toBeInstanceOf(HTMLDivElement);
+    expect(panel?.dataset.t2iMuseumCollectFloating).toBe('true');
+    expect(panel?.parentElement).toBe(document.body);
+  });
+
+  it('moves the fallback panel into the Jimeng action row without duplicating the button', () => {
+    document.body.innerHTML = `<main id="app"></main>`;
+
+    const firstButton = injectCollectButton({
+      root: document,
+      onCollect: vi.fn()
+    });
+    const actionRow = document.createElement('div');
+    actionRow.className = 'action-buttons-wrapper-late';
+    document.querySelector('#app')?.appendChild(actionRow);
+
+    const secondButton = injectCollectButton({
+      root: document,
+      onCollect: vi.fn()
+    });
+    const panel = document.querySelector('[data-t2i-museum-collect-panel]') as HTMLDivElement | null;
+
+    expect(secondButton).toBe(firstButton);
+    expect(document.querySelectorAll('[data-t2i-museum-collect]')).toHaveLength(1);
+    expect(panel?.dataset.t2iMuseumCollectFloating).toBe('false');
+    expect(actionRow.nextElementSibling).toBe(panel);
+  });
+
   it('falls back to the native Jimeng action button row when class names are unavailable', () => {
     document.body.innerHTML = `
       <div>

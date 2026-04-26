@@ -1,7 +1,29 @@
 import type { FastifyInstance } from 'fastify';
 
 import { getStyleDetail, listStyles } from '../services/catalog-query';
+import { needsStyleEnrichment } from '../services/style-enrichment-queue';
+import { getCuratedStyleNarrative } from '../services/style-knowledge';
 import { StyleConflictError, StyleRepository } from '../services/style-repository';
+
+const detailEnrichmentWaitMs = 12_000;
+
+async function waitForDetailEnrichment(app: FastifyInstance, styleId: number) {
+  const enrichmentTask = app.styleEnrichmentQueue
+    ?.enrichStyleId(styleId)
+    .catch((error) => {
+      app.log.warn({ err: error, styleId }, 'style detail enrichment failed');
+      return false;
+    });
+
+  if (!enrichmentTask) {
+    return false;
+  }
+
+  return await Promise.race([
+    enrichmentTask,
+    new Promise<boolean>((resolve) => setTimeout(() => resolve(false), detailEnrichmentWaitMs))
+  ]);
+}
 
 export async function registerStylesRoute(app: FastifyInstance) {
   app.get('/api/styles', async () => ({
@@ -10,16 +32,35 @@ export async function registerStylesRoute(app: FastifyInstance) {
 
   app.get('/api/styles/:slug', async (request, reply) => {
     const params = request.params as { slug: string };
-    const detail = getStyleDetail(app.collectorDb, params.slug, app.collectorConfig.dataDir);
+    const repository = new StyleRepository(app.collectorDb);
+    const style = repository.getStyleBySlug(params.slug);
 
-    if (!detail) {
+    if (!style) {
       return reply.code(404).send({
         error: 'style_not_found'
       });
     }
 
+    if (needsStyleEnrichment(style)) {
+      const curated = getCuratedStyleNarrative(style.name);
+      if (curated) {
+        repository.updateStyle(style.id, {
+          shortDescription: curated.overview,
+          visualTraits: style.visualTraits.trim() ? undefined : curated.characteristics,
+          promptHints: style.promptHints.trim() ? undefined : curated.lineage
+        });
+      } else {
+        await waitForDetailEnrichment(app, style.id);
+      }
+    }
+
+    const latest = repository.getStyleById(style.id);
+    if (latest && needsStyleEnrichment(latest)) {
+      app.styleEnrichmentQueue?.enqueueStyleIds([style.id]);
+    }
+
     return {
-      item: detail
+      item: getStyleDetail(app.collectorDb, params.slug, app.collectorConfig.dataDir)
     };
   });
 

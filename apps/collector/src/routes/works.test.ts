@@ -287,4 +287,92 @@ describe('GET /api/works', () => {
       });
     });
   });
+
+  it('updates a work style tag set from museum edits', async () => {
+    const dataDir = './tmp/test-works-style-edit';
+    fs.rmSync(dataDir, { recursive: true, force: true });
+
+    const { server, imageUrl } = await createImageServer();
+    const styleAnalyzer: StyleAnalyzer = {
+      async analyzePrompt() {
+        return {
+          candidates: [
+            {
+              rawTerm: '莫奈油画',
+              normalizedCandidate: '莫奈油画',
+              termType: 'artist_style',
+              confidence: 0.9,
+              shouldBeStyleTag: true,
+              shortExplanation: '印象派油画光色'
+            }
+          ]
+        };
+      }
+    };
+
+    const app = buildApp({
+      dataDir,
+      styleAnalyzer
+    });
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/collect',
+      payload: {
+        sourceSite: 'jimeng',
+        sourceWorkId: 'style-edit-work',
+        sourceUrl: 'https://jimeng.jianying.com/ai-tool/work-detail/style-edit-work?workDetailType=Image&itemType=9',
+        promptRaw: '莫奈油画，动漫水彩，水墨',
+        imageSourceUrl: imageUrl
+      }
+    });
+    await waitForWorkDone(app, 'style-edit-work');
+
+    const updateRes = await app.inject({
+      method: 'PATCH',
+      url: '/api/works/style-edit-work/styles',
+      payload: {
+        approvedStyles: [
+          {
+            name: '动漫水彩',
+            termType: 'aesthetic_style',
+            shortExplanation: '用户在 museum 中保留的风格。'
+          },
+          {
+            name: '水墨',
+            termType: 'medium_rendering',
+            shortExplanation: '用户在 museum 中补充的媒介。'
+          }
+        ]
+      }
+    });
+    const detailRes = await app.inject({
+      method: 'GET',
+      url: '/api/works/style-edit-work'
+    });
+
+    expect(updateRes.statusCode).toBe(200);
+    expect(detailRes.json().item.styles).toEqual([
+      expect.objectContaining({
+        name: '动漫水彩',
+        isPrimary: true
+      }),
+      expect.objectContaining({
+        name: '水墨',
+        isPrimary: false
+      })
+    ]);
+
+    await app.close();
+
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
+  });
 });

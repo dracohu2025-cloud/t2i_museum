@@ -21,9 +21,6 @@ export interface ObserveCollectButtonOptions extends InjectCollectButtonOptions 
 export type CollectButtonStatus = 'idle' | 'collecting' | 'success' | 'error';
 export type CollectProgressTone = 'idle' | 'active' | 'success' | 'error';
 
-const CREATE_COOLDOWN_MS = 1500;
-const lastCreateTimeByRoot = new WeakMap<Document, number>();
-
 export interface CollectButtonState {
   status: CollectButtonStatus;
   message: string;
@@ -79,17 +76,16 @@ function ensureCollectPanel(root: Document, container: HTMLElement) {
 
   const existing = root.querySelector('[data-t2i-museum-collect-panel]');
   if (existing instanceof HTMLDivElement) {
+    applyInlinePanelLayout(existing);
+    if (container.parentElement && existing.previousElementSibling !== container) {
+      container.insertAdjacentElement('afterend', existing);
+    }
     return existing;
   }
 
   const panel = root.createElement('div');
   panel.dataset.t2iMuseumCollectPanel = 'true';
-  panel.style.display = 'flex';
-  panel.style.flexDirection = 'column';
-  panel.style.alignItems = 'flex-start';
-  panel.style.gap = '8px';
-  panel.style.width = '100%';
-  panel.style.marginTop = '12px';
+  applyInlinePanelLayout(panel);
 
   if (container.parentElement) {
     container.insertAdjacentElement('afterend', panel);
@@ -97,6 +93,67 @@ function ensureCollectPanel(root: Document, container: HTMLElement) {
     container.appendChild(panel);
   }
 
+  return panel;
+}
+
+function applyInlinePanelLayout(panel: HTMLElement) {
+  panel.dataset.t2iMuseumCollectFloating = 'false';
+  panel.style.display = 'flex';
+  panel.style.flexDirection = 'column';
+  panel.style.alignItems = 'flex-start';
+  panel.style.gap = '8px';
+  panel.style.width = '100%';
+  panel.style.marginTop = '12px';
+  panel.style.position = '';
+  panel.style.right = '';
+  panel.style.bottom = '';
+  panel.style.zIndex = '';
+  panel.style.maxWidth = '';
+  panel.style.padding = '';
+  panel.style.border = '';
+  panel.style.borderRadius = '';
+  panel.style.background = '';
+  panel.style.boxShadow = '';
+}
+
+function applyFloatingPanelLayout(panel: HTMLElement) {
+  panel.dataset.t2iMuseumCollectFloating = 'true';
+  panel.style.display = 'flex';
+  panel.style.flexDirection = 'column';
+  panel.style.alignItems = 'flex-start';
+  panel.style.gap = '8px';
+  panel.style.width = '320px';
+  panel.style.maxWidth = 'calc(100vw - 32px)';
+  panel.style.marginTop = '0';
+  panel.style.position = 'fixed';
+  panel.style.right = '24px';
+  panel.style.bottom = '24px';
+  panel.style.zIndex = '2147483646';
+  panel.style.padding = '12px';
+  panel.style.border = '1px solid rgba(34, 211, 238, 0.28)';
+  panel.style.borderRadius = '16px';
+  panel.style.background = 'rgba(2, 6, 23, 0.88)';
+  panel.style.boxShadow = '0 18px 48px rgba(0, 0, 0, 0.34)';
+}
+
+function ensureFloatingCollectPanel(root: Document) {
+  if (!root.body) {
+    return null;
+  }
+
+  const existing = root.querySelector('[data-t2i-museum-collect-panel]');
+  if (existing instanceof HTMLDivElement) {
+    applyFloatingPanelLayout(existing);
+    if (existing.parentElement !== root.body) {
+      root.body.appendChild(existing);
+    }
+    return existing;
+  }
+
+  const panel = root.createElement('div');
+  panel.dataset.t2iMuseumCollectPanel = 'true';
+  applyFloatingPanelLayout(panel);
+  root.body.appendChild(panel);
   return panel;
 }
 
@@ -201,34 +258,61 @@ function applyProgressState(
   state: CollectButtonState
 ) {
   if (!state.progressVisible) {
-    progressNode.wrapper.style.display = 'none';
-    progressNode.label.textContent = '';
-    progressNode.bar.style.width = '0%';
+    if (progressNode.wrapper.style.display !== 'none') {
+      progressNode.wrapper.style.display = 'none';
+    }
+    if (progressNode.label.textContent !== '') {
+      progressNode.label.textContent = '';
+    }
+    if (progressNode.bar.style.width !== '0%') {
+      progressNode.bar.style.width = '0%';
+    }
     return;
   }
 
-  progressNode.wrapper.style.display = 'flex';
-  progressNode.label.textContent = state.progressLabel;
-  progressNode.bar.style.width = `${Math.max(0, Math.min(100, state.progressPercent))}%`;
+  if (progressNode.wrapper.style.display !== 'flex') {
+    progressNode.wrapper.style.display = 'flex';
+  }
+  if (progressNode.label.textContent !== state.progressLabel) {
+    progressNode.label.textContent = state.progressLabel;
+  }
+  const targetWidth = `${Math.max(0, Math.min(100, state.progressPercent))}%`;
+  if (progressNode.bar.style.width !== targetWidth) {
+    progressNode.bar.style.width = targetWidth;
+  }
 
   if (state.progressTone === 'success') {
-    progressNode.label.style.color = 'rgba(22, 101, 52, 0.92)';
-    progressNode.bar.style.background =
-      'linear-gradient(90deg, rgba(22, 101, 52, 0.92), rgba(74, 222, 128, 0.92))';
+    const targetColor = 'rgba(22, 101, 52, 0.92)';
+    const targetBg = 'linear-gradient(90deg, rgba(22, 101, 52, 0.92), rgba(74, 222, 128, 0.92))';
+    if (progressNode.label.style.color !== targetColor) {
+      progressNode.label.style.color = targetColor;
+    }
+    if (progressNode.bar.style.background !== targetBg) {
+      progressNode.bar.style.background = targetBg;
+    }
     return;
   }
 
   if (state.progressTone === 'error') {
-    progressNode.label.style.color = 'rgba(185, 28, 28, 0.92)';
-    progressNode.bar.style.background =
-      'linear-gradient(90deg, rgba(127, 29, 29, 0.92), rgba(248, 113, 113, 0.92))';
+    const targetColor = 'rgba(185, 28, 28, 0.92)';
+    const targetBg = 'linear-gradient(90deg, rgba(127, 29, 29, 0.92), rgba(248, 113, 113, 0.92))';
+    if (progressNode.label.style.color !== targetColor) {
+      progressNode.label.style.color = targetColor;
+    }
+    if (progressNode.bar.style.background !== targetBg) {
+      progressNode.bar.style.background = targetBg;
+    }
     return;
   }
 
-  progressNode.label.style.color =
-    state.progressTone === 'active' ? 'rgba(30, 64, 175, 0.92)' : 'rgba(44, 62, 80, 0.86)';
-  progressNode.bar.style.background =
-    'linear-gradient(90deg, rgba(14, 116, 144, 0.92), rgba(34, 211, 238, 0.92))';
+  const targetColor = state.progressTone === 'active' ? 'rgba(30, 64, 175, 0.92)' : 'rgba(44, 62, 80, 0.86)';
+  const targetBg = 'linear-gradient(90deg, rgba(14, 116, 144, 0.92), rgba(34, 211, 238, 0.92))';
+  if (progressNode.label.style.color !== targetColor) {
+    progressNode.label.style.color = targetColor;
+  }
+  if (progressNode.bar.style.background !== targetBg) {
+    progressNode.bar.style.background = targetBg;
+  }
 }
 
 function applyButtonState(
@@ -237,6 +321,13 @@ function applyButtonState(
   progressNode: { wrapper: HTMLDivElement; label: HTMLDivElement; bar: HTMLDivElement },
   state: CollectButtonState
 ) {
+  const lastApplied = button.dataset.t2iMuseumAppliedState;
+  const stateHash = `${state.status}|${state.message}|${state.progressVisible}|${state.progressPercent}|${state.progressLabel}|${state.progressTone}`;
+  if (lastApplied === stateHash) {
+    return;
+  }
+  button.dataset.t2iMuseumAppliedState = stateHash;
+
   if (state.status === 'collecting') {
     button.disabled = true;
     button.textContent = 'COLLECTING...';
@@ -369,6 +460,9 @@ function bindCollectClick(
       console.log('[t2i] calling onCollect...');
       const result = await options.onCollect();
       console.log('[t2i] onCollect returned:', result);
+      if (button.dataset.t2iMuseumBindingId !== nextBindingId) {
+        return;
+      }
       setState(button, statusNode, state, {
         status: result?.nextStatus ?? 'success',
         message: result?.message ?? '已入馆，可继续收下一张。',
@@ -379,6 +473,9 @@ function bindCollectClick(
       });
     } catch (error) {
       console.error('[t2i] onCollect threw error:', error);
+      if (button.dataset.t2iMuseumBindingId !== nextBindingId) {
+        return;
+      }
       setState(button, statusNode, state, {
         status: 'error',
         message: error instanceof Error ? error.message : '采集失败，请重试。',
@@ -401,29 +498,35 @@ export function injectCollectButton(
   }
 
   const existing = options.root.querySelector('[data-t2i-museum-collect]');
-  const hasExisting = existing instanceof HTMLButtonElement;
-  console.log('[t2i] injectCollectButton called, existing:', hasExisting, 'status:', state.status);
+  let button = existing instanceof HTMLButtonElement ? existing : null;
 
-  if (hasExisting) {
+  if (button) {
     const nextBindingId = options.bindingId ?? 'default';
+    if (button.dataset.t2iMuseumBindingId && button.dataset.t2iMuseumBindingId !== nextBindingId) {
+      const freshButton = button.cloneNode(true) as HTMLButtonElement;
+      freshButton.onclick = null;
+      button.replaceWith(freshButton);
+      button = freshButton;
+    }
+
     const stateKey = `${nextBindingId}|${state.status}|${state.message}|${state.progressVisible}|${state.progressPercent}|${state.progressLabel}|${state.progressTone}`;
+    const currentPanel = button.closest('[data-t2i-museum-collect-panel]') as HTMLElement | null;
+    const hasNativeContainer = Boolean(findActionButtonsContainer(options.root));
+    const shouldMoveFloatingPanel =
+      currentPanel?.dataset.t2iMuseumCollectFloating === 'true' && hasNativeContainer;
 
     // Fast-path: if state hasn't changed and the button structure is intact, do nothing.
-    if (existing.dataset.t2iMuseumLastState === stateKey) {
-      const currentPanel = existing.closest('[data-t2i-museum-collect-panel]') as HTMLElement | null;
+    if (button.dataset.t2iMuseumLastState === stateKey && !shouldMoveFloatingPanel) {
       if (currentPanel) {
         const hasStatus = currentPanel.querySelector('[data-t2i-museum-collect-status]') instanceof HTMLDivElement;
         const hasProgress = currentPanel.querySelector('[data-t2i-museum-collect-progress]') instanceof HTMLDivElement;
         if (hasStatus && hasProgress) {
-          console.log('[t2i] fast-path: state unchanged, structure intact');
-          return existing;
+          return button;
         }
       }
     }
 
     // Prefer the button's current panel to avoid jumping when the host page re-renders.
-    const currentPanel = existing.closest('[data-t2i-museum-collect-panel]') as HTMLElement | null;
-
     let panel: HTMLElement | null = currentPanel;
     let statusNode: HTMLDivElement | null = null;
     let progressNode: ReturnType<typeof ensureProgressNode> | null = null;
@@ -443,22 +546,23 @@ export function injectCollectButton(
     }
 
     // If the structure is complete, update in-place without querying a new container.
-    if (panel && statusNode instanceof HTMLDivElement && progressNode) {
-      console.log('[t2i] in-place update: structure complete');
-      applyButtonState(existing, statusNode, progressNode, state);
-      bindCollectClick(existing, statusNode, state, options);
-      existing.dataset.t2iMuseumLastState = stateKey;
-      return existing;
+    if (panel && statusNode instanceof HTMLDivElement && progressNode && !shouldMoveFloatingPanel) {
+      applyButtonState(button, statusNode, progressNode, state);
+      bindCollectClick(button, statusNode, state, options);
+      button.dataset.t2iMuseumLastState = stateKey;
+      return button;
     }
 
     // Fallback: re-locate container, move button, and clean up the old panel.
-    console.log('[t2i] fallback: moving button to new container');
-    const panelContainer = getPanelContainer(options.root, existing);
-    panel = panelContainer instanceof HTMLElement ? ensureCollectPanel(options.root, panelContainer) : null;
+    const panelContainer = getPanelContainer(options.root, button);
+    panel =
+      panelContainer instanceof HTMLElement
+        ? ensureCollectPanel(options.root, panelContainer)
+        : ensureFloatingCollectPanel(options.root);
 
-    if (panel && existing.parentElement !== panel) {
-      const oldPanel = existing.closest('[data-t2i-museum-collect-panel]');
-      panel.prepend(existing);
+    if (panel && button.parentElement !== panel) {
+      const oldPanel = button.closest('[data-t2i-museum-collect-panel]');
+      panel.prepend(button);
       if (oldPanel instanceof HTMLElement && oldPanel !== panel) {
         oldPanel.remove();
       }
@@ -466,9 +570,9 @@ export function injectCollectButton(
 
     statusNode =
       options.root.querySelector('[data-t2i-museum-collect-status]') ??
-      (panelContainer instanceof HTMLElement ? ensureStatusNode(options.root, panelContainer) : null);
+      (panel instanceof HTMLElement ? ensureStatusNode(options.root, panel) : null);
     progressNode =
-      panelContainer instanceof HTMLElement ? ensureProgressNode(options.root, panelContainer) : null;
+      panel instanceof HTMLElement ? ensureProgressNode(options.root, panel) : null;
 
     if (panel && statusNode instanceof HTMLDivElement && statusNode.parentElement !== panel) {
       panel.appendChild(statusNode);
@@ -478,40 +582,38 @@ export function injectCollectButton(
     }
 
     if (statusNode instanceof HTMLDivElement && progressNode) {
-      applyButtonState(existing, statusNode, progressNode, state);
-      bindCollectClick(existing, statusNode, state, options);
-      existing.dataset.t2iMuseumLastState = stateKey;
+      applyButtonState(button, statusNode, progressNode, state);
+      bindCollectClick(button, statusNode, state, options);
+      button.dataset.t2iMuseumLastState = stateKey;
     }
 
-    return existing;
-  }
+    if (!button.isConnected) {
+      return null;
+    }
 
-  const now = Date.now();
-  const lastCreateTime = lastCreateTimeByRoot.get(options.root) ?? 0;
-  if (now - lastCreateTime < CREATE_COOLDOWN_MS) {
-    console.log('[t2i] button missing but in cooldown, skipping recreate');
-    return null;
+    return button;
   }
 
   const container = findActionButtonsContainer(options.root);
-  if (!(container instanceof HTMLElement)) {
+  const panel =
+    container instanceof HTMLElement
+      ? ensureCollectPanel(options.root, container)
+      : ensureFloatingCollectPanel(options.root);
+  if (!(panel instanceof HTMLElement)) {
     return null;
   }
-  const panel = ensureCollectPanel(options.root, container);
 
-  const button = createFreshButton(options.root);
+  const nextButton = createFreshButton(options.root);
 
-  const nextStatusNode = ensureStatusNode(options.root, container);
-  const nextProgressNode = ensureProgressNode(options.root, container);
+  const nextStatusNode = ensureStatusNode(options.root, panel);
+  const nextProgressNode = ensureProgressNode(options.root, panel);
   if (nextProgressNode.wrapper.parentElement === panel) {
     panel.insertBefore(nextProgressNode.wrapper, nextStatusNode);
   }
-  applyButtonState(button, nextStatusNode, nextProgressNode, state);
+  applyButtonState(nextButton, nextStatusNode, nextProgressNode, state);
 
-  panel.prepend(button);
-  bindCollectClick(button, nextStatusNode, state, options);
-  lastCreateTimeByRoot.set(options.root, Date.now());
-  console.log('[t2i] button recreated after cooldown');
+  panel.prepend(nextButton);
+  bindCollectClick(nextButton, nextStatusNode, state, options);
   return (
     options.root.querySelector('[data-t2i-museum-collect]') as HTMLButtonElement | null
   );
@@ -533,16 +635,37 @@ export function observeCollectButtonWithState(
   let mutating = false;
   const MIN_SYNC_INTERVAL_MS = 200;
   let lastSyncTime = 0;
+  const isOwnUiNode = (node: Node) => {
+    const ElementCtor = options.root.defaultView?.Element;
+    const parentElement = node.parentElement;
+    const element =
+      ElementCtor && node instanceof ElementCtor
+        ? node
+        : ElementCtor && parentElement instanceof ElementCtor
+          ? parentElement
+          : null;
+
+    return Boolean(
+      element?.closest(
+        '[data-t2i-museum-collect-panel], [data-t2i-museum-collect], [data-t2i-style-review-frame]'
+      )
+    );
+  };
 
   const sync = () => {
     if (syncTimer || mutating) {
       return;
     }
 
+    const view = options.root.defaultView;
+    if (!view) {
+      return;
+    }
+
     const now = Date.now();
     const delay = Math.max(0, MIN_SYNC_INTERVAL_MS - (now - lastSyncTime));
 
-    syncTimer = window.setTimeout(() => {
+    syncTimer = view.setTimeout(() => {
       syncTimer = 0;
       lastSyncTime = Date.now();
       mutating = true;
@@ -551,11 +674,28 @@ export function observeCollectButtonWithState(
     }, delay);
   };
 
-  const observer = new MutationObserver(() => {
+  const observer = new MutationObserver((mutations) => {
+    const touchesOnlyOwnUi = mutations.every((mutation) => {
+      if (isOwnUiNode(mutation.target)) {
+        return true;
+      }
+
+      const changedNodes = [
+        ...Array.from(mutation.addedNodes),
+        ...Array.from(mutation.removedNodes)
+      ];
+      return changedNodes.length > 0 && changedNodes.every(isOwnUiNode);
+    });
+    if (touchesOnlyOwnUi) {
+      return;
+    }
+
     sync();
   });
 
   observer.observe(observerRoot, {
+    attributes: true,
+    attributeFilter: ['class'],
     childList: true,
     subtree: true
   });

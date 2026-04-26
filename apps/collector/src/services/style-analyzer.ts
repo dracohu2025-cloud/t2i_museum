@@ -396,7 +396,7 @@ function parseToolArguments(toolArguments: unknown): StyleAnalysisResult | undef
 }
 
 function classifyHeuristicTerm(term: string): StyleAnalysisCandidate['termType'] {
-  if (/^(?:插画|立绘|海报|摄影|写真|水彩|水墨)$/u.test(term)) {
+  if (/^(?:插画|立绘|海报|摄影|写真|油画|水彩|水粉|水墨|版画|丙烯|厚涂)$/u.test(term)) {
     return 'medium_rendering';
   }
 
@@ -413,7 +413,7 @@ function classifyHeuristicTerm(term: string): StyleAnalysisCandidate['termType']
 
 const compositeStyleSplitPattern = /(?:具有|带有|采用|通过|以及|和|与|并且|兼具|融合|结合|混合|搭配|配合)/u;
 const atomicStylePattern =
-  /([A-Za-z0-9\u4e00-\u9fff()（）·_\-\s]{0,18}?(?:动漫风格立绘|国漫风格立绘|日本动漫风格立绘|风格立绘|动漫风格|国漫风格|主义|动漫风|国漫风|日漫风|美漫风|网游动漫风|插画风格|插画|拼贴画|厚涂|立绘|渲染|水彩|水墨|风格|画风))/gu;
+  /([A-Za-z0-9\u4e00-\u9fff()（）·_\-\s]{0,18}?(?:动漫风格立绘|国漫风格立绘|日本动漫风格立绘|风格立绘|动漫风格|国漫风格|水彩插画风格|水粉插画风格|油画插画风格|丙烯插画风格|版画插画风格|水彩插画|水粉插画|油画插画|丙烯插画|版画插画|主义|动漫风|国漫风|日漫风|美漫风|网游动漫风|插画风格|插画|拼贴画|油画|水彩|水粉|水墨|版画|丙烯|厚涂|立绘|渲染|风格|画风))/gu;
 const genericMediumSuffixes = ['插画', '摄影', '海报', '写真'] as const;
 const styleDescriptorPrefixPattern =
   /(?:日本动漫|日本|日式|中式|新中式|中国风|中国|水彩|水粉|油画|丙烯|版画|黑白|极简|极繁|古风|国风|法式|日系|韩系|美式|欧式|哥特|赛博|蒸汽波|复古|动漫|二次元|国漫|日漫|美漫|写实|半写实|手绘|卡通|儿童|绘本|像素|低多边形|抽象|超现实|拼贴|厚涂|薄涂|立绘|CG|3D|2D|Q版|梦幻|童话)/u;
@@ -523,6 +523,14 @@ function isLowValueHeuristicTerm(term: string): boolean {
   return false;
 }
 
+function isCompoundMediumStylePhrase(term: string): boolean {
+  const compact = term.replace(/\s+/g, '');
+  return (
+    styleDescriptorPrefixPattern.test(compact) &&
+    /(?:插画|插画风格|绘画|绘画风格)$/u.test(compact)
+  );
+}
+
 function normalizeHeuristicTerm(term: string): string {
   return term.trim();
 }
@@ -594,6 +602,11 @@ function extractAtomicStyleTerms(term: string): string[] {
 
   const results: string[] = [];
   const seen = new Set<string>();
+
+  if (isCompoundMediumStylePhrase(sanitized)) {
+    return isLowValueHeuristicTerm(sanitized) ? [] : [sanitized];
+  }
+
   const directMatches = [...sanitized.matchAll(atomicStylePattern)]
     .map((match) => sanitizeHeuristicTerm(match[1] ?? ''))
     .filter(Boolean);
@@ -767,7 +780,7 @@ function filterModelCandidatesByPrompt(
 
 function extractHeuristicStyleCandidates(promptRaw: string): StyleAnalysisResult {
   const matches = promptRaw.match(
-    /([A-Za-z0-9\u4e00-\u9fff()（）·_\-\s]{0,28}?(?:动漫风格立绘|国漫风格立绘|日本动漫风格立绘|风格立绘|动漫风格|国漫风格|网游动漫风|插画风格|插画|风格|画风|主义|渲染|水彩|水墨|立绘))/gu
+    /([A-Za-z0-9\u4e00-\u9fff()（）·_\-\s]{0,28}?(?:动漫风格立绘|国漫风格立绘|日本动漫风格立绘|风格立绘|动漫风格|国漫风格|网游动漫风|水彩插画风格|水粉插画风格|油画插画风格|丙烯插画风格|版画插画风格|水彩插画|水粉插画|油画插画|丙烯插画|版画插画|插画风格|插画|风格|画风|主义|渲染|油画|水彩|水粉|水墨|版画|丙烯|厚涂|立绘))/gu
   );
 
   const candidates: StyleAnalysisCandidate[] = [];

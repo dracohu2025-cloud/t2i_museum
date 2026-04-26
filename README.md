@@ -54,7 +54,7 @@ If you prefer naming the secret after the provider, the collector also accepts:
 OPENROUTER_API_KEY=your_key_here
 ```
 
-The service loads environment variables from the repo-root `.env` first, then `apps/collector/.env` as an override. This default example targets OpenRouter with `DeepSeek V4 Flash`. The collector now prefers structured JSON output for DeepSeek/OpenRouter requests and keeps a tool-calling fallback for other OpenAI-compatible providers.
+The service loads `apps/collector/.env` first, then the repo-root `.env` as the final override. This keeps the root `.env` as the visible project-level source of truth while still allowing collector-local defaults. This default example targets OpenRouter with `DeepSeek V4 Flash`. The collector now prefers structured JSON output for DeepSeek/OpenRouter requests and keeps a tool-calling fallback for other OpenAI-compatible providers.
 
 Optional COS upload is also supported. The collector recognizes both the conventional `TENCENT_COS_*` variables and legacy aliases such as `COS_SecretId`, `COS_SecretKey`, `COS_Space_Name`, `COS_Domain_Name`, and `COS_Region`.
 

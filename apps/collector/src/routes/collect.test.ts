@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 
 import { buildApp } from '../app';
 import type { StyleAnalyzer } from '../services/style-analyzer';
+import type { StyleEnricher } from '../services/style-enricher';
 
 async function createImageServer() {
   const imageBuffer = await sharp({
@@ -69,6 +70,39 @@ async function waitForWorkStatus(
   }
 
   throw new Error(`timed out waiting for work ${sourceSite}/${sourceWorkId} to become ${expectedStatus}`);
+}
+
+async function waitForStyleNarrative(dbPath: string, styleName: string) {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < 5_000) {
+    const db = new Database(dbPath, { readonly: true });
+    const row = db
+      .prepare(
+        `
+          SELECT short_description, visual_traits, prompt_hints
+          FROM styles
+          WHERE name = ?
+          LIMIT 1
+        `
+      )
+      .get(styleName) as
+      | {
+          short_description: string;
+          visual_traits: string;
+          prompt_hints: string;
+        }
+      | undefined;
+    db.close();
+
+    if (row?.visual_traits && row.prompt_hints) {
+      return row;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+
+  throw new Error(`timed out waiting for style ${styleName} narrative`);
 }
 
 describe('POST /api/collect', () => {
@@ -353,6 +387,65 @@ describe('POST /api/collect', () => {
     expect(styles).toEqual([{ name: '动漫水彩', source: 'user' }]);
     db.close();
 
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
+  });
+
+  it('asynchronously enriches newly created style keywords with narrative fields', async () => {
+    const dataDir = './tmp/test-collect-style-enrichment';
+    fs.rmSync(dataDir, { recursive: true, force: true });
+    const { server, imageUrl } = await createImageServer();
+    const styleEnricher: StyleEnricher = {
+      async enrichStyle(input) {
+        expect(input.name).toBe('BJD');
+        expect(input.evidencePrompts[0]).toContain('BJD');
+        return {
+          shortDescription:
+            'BJD 在图像生成语境里通常指球形关节人偶式审美，强调人偶般精致、略带非现实感的人物质感。',
+          visualTraits:
+            '典型特征包括瓷白或树脂感皮肤、清晰可见的关节结构、精修五官、玻璃眼珠般的凝视，以及华丽服饰与舞台化姿态。',
+          promptHints:
+            '它常和洛丽塔、哥特、古典人像、娃娃摄影或精致立绘并用，需要和普通“美女人像”区分开人偶结构和材质感。'
+        };
+      }
+    };
+
+    const app = buildApp({ dataDir, styleEnricher });
+    const dbPath = path.join(dataDir, 'catalog.sqlite');
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/collect',
+      payload: {
+        sourceSite: 'jimeng',
+        sourceWorkId: 'w-style-enrichment',
+        sourceUrl:
+          'https://jimeng.jianying.com/ai-tool/work-detail/w-style-enrichment?workDetailType=Image&itemType=9',
+        promptRaw: 'BJD风格美人，全身写实，油画重彩',
+        imageSourceUrl: imageUrl,
+        approvedStyles: [
+          {
+            name: 'BJD',
+            termType: 'aesthetic_style'
+          }
+        ]
+      }
+    });
+
+    expect(res.statusCode).toBe(202);
+    await waitForWorkStatus(dbPath, 'jimeng', 'w-style-enrichment', 'done');
+    const style = await waitForStyleNarrative(dbPath, 'BJD');
+    expect(style.short_description).toContain('球形关节人偶');
+    expect(style.visual_traits).toContain('关节结构');
+    expect(style.prompt_hints).toContain('娃娃摄影');
+
+    await app.close();
     await new Promise<void>((resolve, reject) => {
       server.close((error) => {
         if (error) {

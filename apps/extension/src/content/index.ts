@@ -1,4 +1,4 @@
-import { extractJimengDetailPayload } from './dom-extract';
+import { extractJimengDetailPayload, hasLoadedJimengDetailImage } from './dom-extract';
 import type { ApprovedStyleTag, CollectWorkPayload } from '@t2i/contracts';
 import {
   type CollectButtonActionResult,
@@ -28,8 +28,20 @@ type ChromeLike = {
           sendResponse: (response?: unknown) => void
         ) => boolean | void
       ) => void;
+      removeListener?: (
+        listener: (
+          message: unknown,
+          sender: unknown,
+          sendResponse: (response?: unknown) => void
+        ) => boolean | void
+      ) => void;
     };
   };
+};
+
+type ContentRuntimeGlobal = typeof globalThis & {
+  __t2iMuseumContentCleanup?: () => void;
+  __t2iMuseumContentSync?: () => void;
 };
 
 interface WorkProgressPayload {
@@ -69,6 +81,8 @@ interface StylePreviewRuntimeResponse {
   error?: string;
   data?: {
     candidates?: StylePreviewCandidate[];
+    error?: string;
+    message?: string;
   };
 }
 
@@ -78,6 +92,7 @@ interface StyleReviewRow extends ApprovedStyleTag {
 }
 
 const chromeLike = (globalThis as typeof globalThis & { chrome?: ChromeLike }).chrome;
+const runtimeGlobal = globalThis as ContentRuntimeGlobal;
 let routeObserver: MutationObserver | null = null;
 let syncScheduled = false;
 let syncTimer = 0;
@@ -86,8 +101,60 @@ let currentRouteToken = 0;
 let routeWatchTimer = 0;
 let detailRetryTimer = 0;
 let lastKnownUrl = '';
+let lastFetchWorkProgressTime = 0;
+let activeDetailWorkId = '';
+const FETCH_WORK_PROGRESS_COOLDOWN_MS = 2000;
 const contentBindingId = `binding-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const buttonState = createCollectButtonState();
+let disposed = false;
+let cleanupHandlers: Array<() => void> = [];
+let requestRouteSync: (() => void) | undefined;
+
+function addCleanup(handler: () => void) {
+  cleanupHandlers.push(handler);
+}
+
+function isCurrentInstance() {
+  return !disposed && runtimeGlobal.__t2iMuseumContentCleanup === cleanupCurrentInstance;
+}
+
+function cleanupCurrentInstance() {
+  disposed = true;
+  syncScheduled = false;
+  requestRouteSync = undefined;
+  if (syncTimer) {
+    window.clearTimeout(syncTimer);
+    syncTimer = 0;
+  }
+  if (routeObserver) {
+    routeObserver.disconnect();
+    routeObserver = null;
+  }
+  stopProgressPolling();
+  stopRouteWatch();
+  stopDetailRetry();
+
+  for (const handler of cleanupHandlers.splice(0).reverse()) {
+    try {
+      handler();
+    } catch {}
+  }
+
+  if (runtimeGlobal.__t2iMuseumContentCleanup === cleanupCurrentInstance) {
+    delete runtimeGlobal.__t2iMuseumContentCleanup;
+  }
+  if (runtimeGlobal.__t2iMuseumContentSync === syncCurrentInstance) {
+    delete runtimeGlobal.__t2iMuseumContentSync;
+  }
+}
+
+function syncCurrentInstance() {
+  if (!isCurrentInstance()) {
+    return;
+  }
+
+  requestRouteSync?.();
+}
 
 function mapRuntimeError(message: string): string {
   if (/Extension context invalidated/i.test(message)) {
@@ -170,8 +237,9 @@ async function previewCollectStyles(payload: CollectWorkPayload): Promise<StyleP
         }
 
         if (!response?.ok) {
-          console.error('[t2i] preview response not ok:', response?.error);
-          reject(new Error(response?.error ?? '风格预分析失败'));
+          const message = response?.error ?? response.data?.error ?? response.data?.message ?? '风格预分析失败';
+          console.error('[t2i] preview response not ok:', message);
+          reject(new Error(message));
           return;
         }
 
@@ -235,7 +303,9 @@ function isolateReviewControl(element: HTMLElement) {
 
 function openStyleReviewDialog(
   root: Document,
-  candidates: StylePreviewCandidate[]
+  candidates: StylePreviewCandidate[],
+  promptRaw: string,
+  previewWarning = ''
 ): Promise<ApprovedStyleTag[] | null> {
   const existing = root.querySelector('[data-t2i-style-review-overlay]');
   existing?.remove();
@@ -294,7 +364,7 @@ function openStyleReviewDialog(
     overlay.style.padding = '24px';
 
     const panel = frameDocument.createElement('section');
-    panel.style.width = 'min(720px, 94vw)';
+    panel.style.width = 'min(1180px, 94vw)';
     panel.style.maxHeight = '86vh';
     panel.style.overflow = 'auto';
     panel.style.borderRadius = '28px';
@@ -312,11 +382,72 @@ function openStyleReviewDialog(
     title.style.fontWeight = '800';
 
     const description = frameDocument.createElement('p');
-    description.textContent = '每一行左侧都是可直接编辑的最终风格词。请在确认前把不准的词直接改掉，确认后才会保存图片、上传 COS 并写入 museum。';
+    description.textContent = previewWarning
+      ? `风格预分析失败：${previewWarning}。你仍可手动添加关键词后继续入馆。`
+      : '每一行左侧都是可直接编辑的最终风格词。请在确认前把不准的词直接改掉，确认后才会保存图片、上传 COS 并写入 museum。';
     description.style.margin = '0 0 18px';
     description.style.color = 'rgba(203, 213, 225, 0.78)';
     description.style.fontSize = '13px';
     description.style.lineHeight = '1.7';
+
+    const responsiveStyle = frameDocument.createElement('style');
+    responsiveStyle.textContent = `
+      @media (max-width: 900px) {
+        [data-t2i-style-review-grid] {
+          grid-template-columns: minmax(0, 1fr) !important;
+        }
+
+        [data-t2i-style-review-prompt] {
+          max-height: 28vh !important;
+        }
+
+        [data-t2i-style-review-row] {
+          grid-template-columns: minmax(0, 1fr) !important;
+        }
+      }
+    `;
+    frameDocument.head.appendChild(responsiveStyle);
+
+    const contentGrid = frameDocument.createElement('div');
+    contentGrid.dataset.t2iStyleReviewGrid = 'true';
+    contentGrid.style.display = 'grid';
+    contentGrid.style.gridTemplateColumns = 'minmax(300px, 0.82fr) minmax(420px, 1.18fr)';
+    contentGrid.style.gap = '16px';
+    contentGrid.style.alignItems = 'start';
+
+    const promptPanel = frameDocument.createElement('aside');
+    promptPanel.dataset.t2iStyleReviewPrompt = 'true';
+    promptPanel.style.border = '1px solid rgba(148, 163, 184, 0.22)';
+    promptPanel.style.borderRadius = '16px';
+    promptPanel.style.background = 'rgba(2, 6, 23, 0.58)';
+    promptPanel.style.padding = '14px';
+    promptPanel.style.maxHeight = '54vh';
+    promptPanel.style.overflow = 'auto';
+
+    const promptLabel = frameDocument.createElement('div');
+    promptLabel.textContent = '原始 Prompt';
+    promptLabel.style.color = 'rgba(125, 211, 252, 0.92)';
+    promptLabel.style.fontSize = '11px';
+    promptLabel.style.fontWeight = '800';
+    promptLabel.style.letterSpacing = '0.12em';
+    promptLabel.style.marginBottom = '10px';
+
+    const promptText = frameDocument.createElement('div');
+    promptText.textContent = promptRaw || '未读取到原始 Prompt。';
+    promptText.style.whiteSpace = 'pre-wrap';
+    promptText.style.wordBreak = 'break-word';
+    promptText.style.color = 'rgba(226, 232, 240, 0.92)';
+    promptText.style.fontSize = '14px';
+    promptText.style.lineHeight = '1.75';
+
+    promptPanel.appendChild(promptLabel);
+    promptPanel.appendChild(promptText);
+
+    const keywordPanel = frameDocument.createElement('div');
+    keywordPanel.style.display = 'flex';
+    keywordPanel.style.flexDirection = 'column';
+    keywordPanel.style.gap = '10px';
+    keywordPanel.style.minWidth = '0';
 
     const list = frameDocument.createElement('div');
     list.style.display = 'flex';
@@ -339,8 +470,9 @@ function openStyleReviewDialog(
 
       rows.forEach((row, index) => {
         const item = frameDocument.createElement('div');
+        item.dataset.t2iStyleReviewRow = 'true';
         item.style.display = 'grid';
-        item.style.gridTemplateColumns = 'minmax(0, 1fr) 160px auto';
+        item.style.gridTemplateColumns = 'minmax(0, 1fr) 150px auto';
         item.style.gap = '10px';
         item.style.alignItems = 'center';
         item.style.padding = '12px';
@@ -506,9 +638,13 @@ function openStyleReviewDialog(
     actions.appendChild(add);
     actions.appendChild(rightActions);
 
+    keywordPanel.appendChild(list);
+    contentGrid.appendChild(promptPanel);
+    contentGrid.appendChild(keywordPanel);
+
     panel.appendChild(title);
     panel.appendChild(description);
-    panel.appendChild(list);
+    panel.appendChild(contentGrid);
     panel.appendChild(actions);
     overlay.appendChild(panel);
     frameDocument.body.appendChild(overlay);
@@ -592,6 +728,20 @@ function stopRouteWatch() {
   }
 }
 
+function waitForMainImage(root: Document, timeoutMs = 3000): Promise<void> {
+  return new Promise((resolve) => {
+    const startTime = Date.now();
+    const check = () => {
+      if (hasLoadedJimengDetailImage(root) || Date.now() - startTime >= timeoutMs) {
+        resolve();
+      } else {
+        setTimeout(check, 200);
+      }
+    };
+    check();
+  });
+}
+
 function stopDetailRetry() {
   if (detailRetryTimer) {
     window.clearInterval(detailRetryTimer);
@@ -637,6 +787,7 @@ function toCollectingActionResult(message: string): CollectButtonActionResult {
 }
 
 function bootstrap() {
+  disposed = false;
   const isReinit = document.documentElement.dataset.t2iMuseumContentScript === 'ready';
   document.documentElement.dataset.t2iMuseumContentScript = 'ready';
   console.log('[t2i] bootstrap called, isReinit:', isReinit, 'pathname:', window.location.pathname);
@@ -662,12 +813,29 @@ function bootstrap() {
     onCollect: async () => {
       console.log('[t2i] onCollect started');
       try {
+        await waitForMainImage(document);
         const payload = extractJimengDetailPayload(document);
         console.log('[t2i] payload extracted:', payload.sourceWorkId);
-        const candidates = await previewCollectStyles(payload);
+        let previewWarning = '';
+        let candidates: StylePreviewCandidate[] = [];
+        try {
+          candidates = await previewCollectStyles(payload);
+        } catch (error) {
+          previewWarning = error instanceof Error ? error.message : '风格预分析失败';
+          console.warn('[t2i] preview failed, continuing with manual style review:', previewWarning);
+        }
         console.log('[t2i] candidates received:', candidates.length);
-        const approvedStyles = await openStyleReviewDialog(document, candidates);
+        const approvedStyles = await openStyleReviewDialog(
+          document,
+          candidates,
+          payload.promptRaw,
+          previewWarning
+        );
         console.log('[t2i] dialog closed, approvedStyles:', approvedStyles?.length ?? 0);
+        if (!isCurrentInstance()) {
+          return;
+        }
+
         if (!approvedStyles) {
           const canceled: CollectButtonActionResult = {
             nextStatus: 'idle',
@@ -703,8 +871,12 @@ function bootstrap() {
     stopProgressPolling();
 
     const poll = async () => {
+      if (!isCurrentInstance()) {
+        return;
+      }
+
       const progressResult = await fetchWorkProgress(sourceWorkId);
-      if (routeToken !== currentRouteToken) {
+      if (!isCurrentInstance() || routeToken !== currentRouteToken) {
         return;
       }
 
@@ -740,6 +912,10 @@ function bootstrap() {
   };
 
   const syncRoute = () => {
+    if (!isCurrentInstance()) {
+      return;
+    }
+
     syncScheduled = false;
     const isDetailPage = window.location.pathname.includes(JIMENG_DETAIL_PATH_SEGMENT);
     const workId = currentWorkId();
@@ -751,9 +927,18 @@ function bootstrap() {
       stopDetailRetry();
       routeObserver?.disconnect();
       routeObserver = null;
+      activeDetailWorkId = '';
       resetButtonState();
       removeCollectUi(document);
       return;
+    }
+
+    const workChanged = workId !== activeDetailWorkId;
+    if (workChanged) {
+      activeDetailWorkId = workId;
+      stopProgressPolling();
+      resetButtonState();
+      lastFetchWorkProgressTime = 0;
     }
 
     if (!routeObserver) {
@@ -771,8 +956,14 @@ function bootstrap() {
       }
     }, 500);
 
+    const now = Date.now();
+    if (now - lastFetchWorkProgressTime < FETCH_WORK_PROGRESS_COOLDOWN_MS) {
+      return;
+    }
+    lastFetchWorkProgressTime = now;
+
     void fetchWorkProgress(workId).then((progressResult) => {
-      if (routeToken !== currentRouteToken) {
+      if (!isCurrentInstance() || routeToken !== currentRouteToken) {
         return;
       }
 
@@ -801,6 +992,10 @@ function bootstrap() {
   };
 
   const scheduleSyncRoute = () => {
+    if (!isCurrentInstance()) {
+      return;
+    }
+
     if (syncScheduled) {
       return;
     }
@@ -811,8 +1006,9 @@ function bootstrap() {
       syncRoute();
     }, 0);
   };
+  requestRouteSync = scheduleSyncRoute;
 
-  chromeLike?.runtime?.onMessage?.addListener((message, _sender, sendResponse) => {
+  const runtimeMessageListener = (message: unknown, _sender: unknown, sendResponse: (response?: unknown) => void) => {
     if (
       message &&
       typeof message === 'object' &&
@@ -822,38 +1018,65 @@ function bootstrap() {
       sendResponse?.({ ok: true });
       return;
     }
+  };
+  chromeLike?.runtime?.onMessage?.addListener(runtimeMessageListener);
+  addCleanup(() => {
+    chromeLike?.runtime?.onMessage?.removeListener?.(runtimeMessageListener);
   });
 
   const originalPushState = window.history.pushState.bind(window.history);
   const originalReplaceState = window.history.replaceState.bind(window.history);
 
-  window.history.pushState = ((...args) => {
+  const patchedPushState = ((...args) => {
     const result = originalPushState(...args);
     scheduleSyncRoute();
     return result;
   }) as History['pushState'];
-
-  window.history.replaceState = ((...args) => {
+  const patchedReplaceState = ((...args) => {
     const result = originalReplaceState(...args);
     scheduleSyncRoute();
     return result;
   }) as History['replaceState'];
 
+  window.history.pushState = patchedPushState;
+  window.history.replaceState = patchedReplaceState;
+
+  const handlePageHide = () => {
+    stopRouteWatch();
+    stopDetailRetry();
+  };
+  const handleVisibilityChange = () => {
+    if (document.visibilityState === 'visible') {
+      scheduleSyncRoute();
+    }
+  };
+
   window.addEventListener('popstate', scheduleSyncRoute);
   window.addEventListener('pageshow', scheduleSyncRoute);
   window.addEventListener('hashchange', scheduleSyncRoute);
-  window.addEventListener('pagehide', () => {
-    stopRouteWatch();
-    stopDetailRetry();
-  });
+  window.addEventListener('pagehide', handlePageHide);
   window.addEventListener('focus', scheduleSyncRoute);
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
-      scheduleSyncRoute();
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+  addCleanup(() => {
+    window.removeEventListener('popstate', scheduleSyncRoute);
+    window.removeEventListener('pageshow', scheduleSyncRoute);
+    window.removeEventListener('hashchange', scheduleSyncRoute);
+    window.removeEventListener('pagehide', handlePageHide);
+    window.removeEventListener('focus', scheduleSyncRoute);
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+    if (window.history.pushState === patchedPushState) {
+      window.history.pushState = originalPushState as History['pushState'];
+    }
+    if (window.history.replaceState === patchedReplaceState) {
+      window.history.replaceState = originalReplaceState as History['replaceState'];
     }
   });
 
   routeWatchTimer = window.setInterval(() => {
+    if (!isCurrentInstance()) {
+      return;
+    }
+
     if (window.location.href === lastKnownUrl) {
       return;
     }
@@ -868,4 +1091,11 @@ function bootstrap() {
   window.setTimeout(scheduleSyncRoute, 1_200);
 }
 
-bootstrap();
+if (runtimeGlobal.__t2iMuseumContentSync) {
+  runtimeGlobal.__t2iMuseumContentSync();
+} else {
+  runtimeGlobal.__t2iMuseumContentCleanup?.();
+  runtimeGlobal.__t2iMuseumContentCleanup = cleanupCurrentInstance;
+  runtimeGlobal.__t2iMuseumContentSync = syncCurrentInstance;
+  bootstrap();
+}

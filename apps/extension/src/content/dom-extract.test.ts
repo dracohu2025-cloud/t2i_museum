@@ -125,4 +125,80 @@ describe('extractJimengDetailPayload', () => {
     expect(result.imageSourceUrl).toBe('https://example.com/main-work.webp');
     expect(result.aspectRatio).toBe('9:16');
   });
+
+  it('prefers the Jimeng detail player image over gallery covers', () => {
+    document.body.innerHTML = `
+      <div class="detail-info-n1sIVT">
+        <div class="prompt-tip-_S_YjR">图片提示词</div>
+        <div class="prompt-value-H7u3lm">
+          <div class="prompt-value-text-cJL62n">
+            <span class="prompt-value-container-lIP4pF">
+              <span>简笔画，画面中心是一只绿色鹦鹉</span>
+            </span>
+          </div>
+        </div>
+        <div class="prompt-tags-Ixl0vJ">
+          <span>图片 4.5</span>
+          <span>2:3</span>
+        </div>
+      </div>
+      <img
+        class="cover-Qo4B2U"
+        src="https://example.com/stale-feed-cover.webp"
+        width="480"
+        height="720"
+      />
+      <div class="image-player-KCJSe1">
+        <img
+          class="image-eTuIBd"
+          src="https://example.com/current-detail-image.webp"
+          width="1365"
+          height="2048"
+        />
+      </div>
+    `;
+
+    window.history.replaceState(
+      {},
+      '',
+      '/ai-tool/work-detail/7593295293941124361?workDetailType=Image&itemType=9'
+    );
+
+    const result = extractJimengDetailPayload(document);
+
+    expect(result.imageSourceUrl).toBe('https://example.com/current-detail-image.webp');
+  });
+
+  it('does not fall back to Jimeng gallery covers before the detail image is ready', () => {
+    document.body.innerHTML = `
+      <div class="detail-info-n1sIVT">
+        <div class="prompt-tip-_S_YjR">图片提示词</div>
+        <div class="prompt-value-H7u3lm">
+          <div class="prompt-value-text-cJL62n">
+            <span class="prompt-value-container-lIP4pF">
+              <span>等待详情主图加载</span>
+            </span>
+          </div>
+        </div>
+        <div class="prompt-tags-Ixl0vJ">
+          <span>图片 4.5</span>
+          <span>2:3</span>
+        </div>
+      </div>
+      <img
+        class="cover-Qo4B2U"
+        src="https://example.com/stale-feed-cover.webp"
+        width="480"
+        height="720"
+      />
+    `;
+
+    window.history.replaceState(
+      {},
+      '',
+      '/ai-tool/work-detail/7593295293941124361?workDetailType=Image&itemType=9'
+    );
+
+    expect(() => extractJimengDetailPayload(document)).toThrow('failed to locate primary image');
+  });
 });

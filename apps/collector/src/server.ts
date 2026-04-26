@@ -13,10 +13,10 @@ function loadEnvFiles() {
   const projectRoot = resolve(collectorRoot, '..', '..');
 
   dotenv.config({
-    path: resolve(projectRoot, '.env')
+    path: resolve(collectorRoot, '.env')
   });
   dotenv.config({
-    path: resolve(collectorRoot, '.env'),
+    path: resolve(projectRoot, '.env'),
     override: true
   });
 }

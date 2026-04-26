@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { deriveStyleDisplayName, deriveStyleNarrative } from './style-knowledge';
+import {
+  deriveStyleDisplayName,
+  deriveStyleNarrative,
+  getCuratedStyleNarrative
+} from './style-knowledge';
 
 describe('deriveStyleNarrative', () => {
   it('returns a richer narrative for Moebius style pages', () => {
@@ -26,6 +30,44 @@ describe('deriveStyleNarrative', () => {
 
     expect(narrative.overview).toContain('日本动画');
     expect(narrative.lineage).toContain('手冢治虫');
+  });
+
+  it('prefers curated narrative for anime watercolor over Chinese placeholders', () => {
+    const narrative = deriveStyleNarrative({
+      name: '动漫水彩',
+      termType: 'aesthetic_style',
+      shortDescription: 'Prompt 中显式点名的视觉风格词。',
+      visualTraits: ''
+    });
+
+    expect(narrative.overview).toContain('二次元角色造型');
+    expect(narrative.lineage).toContain('水彩插画');
+    expect(narrative.characteristics).toContain('水痕晕开');
+  });
+
+  it('returns curated narrative for BJD placeholders', () => {
+    const narrative = deriveStyleNarrative({
+      name: 'BJD',
+      termType: 'aesthetic_style',
+      shortDescription: 'Prompt 中显式点名的视觉风格词。',
+      visualTraits: ''
+    });
+
+    expect(narrative.overview).toContain('球形关节人偶');
+    expect(narrative.lineage).toContain('娃娃摄影');
+    expect(narrative.characteristics).toContain('玻璃眼珠');
+    expect(getCuratedStyleNarrative('BJD')?.overview).toContain('树脂');
+  });
+
+  it('does not treat Chinese extractor placeholders as complete copy', () => {
+    const narrative = deriveStyleNarrative({
+      name: '待补充风格',
+      termType: 'aesthetic_style',
+      shortDescription: 'Prompt 中显式点名的视觉风格词。',
+      visualTraits: ''
+    });
+
+    expect(narrative.overview).toBe('待补充风格 已进入当前词库，但它的核心定义仍待补充。');
   });
 
   it('preserves manually curated overview and visual traits when they exist', () => {

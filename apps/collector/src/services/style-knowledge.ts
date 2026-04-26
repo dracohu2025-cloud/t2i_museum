@@ -47,6 +47,24 @@ const styleKnowledgeEntries: StyleKnowledgeEntry[] = [
       '典型特征包括明确的人物轮廓、大而可读的五官设计、发型与服装符号化、情绪表演清晰，以及在二次元平面感与戏剧化光影之间寻找平衡。'
   },
   {
+    aliases: ['动漫水彩', 'anime watercolor', 'anime watercolour', '动漫水彩风', '动漫水彩风格'],
+    overview:
+      '“动漫水彩”是一种把二次元角色造型与水彩媒介质感结合起来的视觉语言：人物轮廓和五官保持动漫式清晰可读，色彩与光影则借水彩的透明叠色、湿润晕染和纸面颗粒来获得柔和、轻盈的观感。',
+    lineage:
+      '它来自日本动画、漫画和游戏插画中的角色美术传统，同时吸收了水彩插画、绘本和同人插画里的透明色层处理。在数字绘画与 AIGC prompt 中，这个词通常用于降低纯赛璐珞或厚涂画面的硬度，让角色图带有手绘纸感和清新的空气感。',
+    characteristics:
+      '典型特征包括大而明亮的动漫眼睛、干净但略带手绘感的轮廓线、低饱和高明度配色、半透明肤色和发丝渐变、背景或服饰处的水痕晕开、纸纹颗粒，以及樱花、天空、校园或柔光场景中常见的轻盈氛围。'
+  },
+  {
+    aliases: ['BJD', 'Ball-jointed doll', 'ball jointed doll', '球形关节人偶', '球关节人偶'],
+    overview:
+      'BJD 在图像生成语境里通常指“球形关节人偶”审美：人物被塑造成精致、脆弱、略带非现实感的人偶形象，强调树脂或瓷器般的皮肤、可展示的关节结构与高度装饰化造型。',
+    lineage:
+      '它来自球形关节人偶收藏、娃娃摄影、哥特与洛丽塔服饰文化，也常被数字插画和角色立绘吸收，用来把真人美型、玩偶质感和舞台化服装结合起来。',
+    characteristics:
+      '典型特征包括瓷白或树脂感皮肤、玻璃眼珠般的凝视、精修五官、明显或隐约可见的肩肘膝关节、华丽礼服与假发造型，以及介于真人肖像和精致人偶之间的冷感、静态和装饰性。'
+  },
+  {
     aliases: ['立绘', 'character illustration', 'full-body character portrait'],
     overview:
       '“立绘”本质上不是艺术史意义上的风格流派，而是一种角色展示范式，重点是把人物设定、服装、道具与气质一次性清晰交代出来。',
@@ -158,8 +176,10 @@ for (const entry of styleKnowledgeEntries) {
 }
 
 function isLowValueOverview(text: string): boolean {
-  return /^(Refers to|Explicitly names|Explicit aesthetic|Describes |High-value )/i.test(
-    text.trim()
+  const value = text.trim();
+  return (
+    /^(Refers to|Explicitly names|Explicit aesthetic|Describes |High-value )/i.test(value) ||
+    /^Prompt 中显式点名的视觉风格词。?$/.test(value)
   );
 }
 
@@ -173,7 +193,9 @@ function pickOverview(input: StyleNarrativeInput, entry?: StyleKnowledgeEntry): 
     return entry.overview;
   }
 
-  return manual || `${input.name} 已进入当前词库，但它的核心定义仍待补充。`;
+  return manual && !isLowValueOverview(manual)
+    ? manual
+    : `${input.name} 已进入当前词库，但它的核心定义仍待补充。`;
 }
 
 function pickLineage(input: StyleNarrativeInput, entry?: StyleKnowledgeEntry): string {
@@ -222,4 +244,17 @@ export function deriveStyleNarrative(input: StyleNarrativeInput): StyleNarrative
 
 export function deriveStyleDisplayName(name: string): string {
   return styleKnowledgeMap.get(normalizeStyleTerm(name))?.displayName ?? name;
+}
+
+export function getCuratedStyleNarrative(name: string): StyleNarrative | undefined {
+  const entry = styleKnowledgeMap.get(normalizeStyleTerm(name));
+  if (!entry) {
+    return undefined;
+  }
+
+  return {
+    overview: entry.overview,
+    lineage: entry.lineage,
+    characteristics: entry.characteristics
+  };
 }

@@ -5,6 +5,7 @@ import sharp from 'sharp';
 import { describe, expect, it } from 'vitest';
 
 import type { StyleAnalyzer } from '../services/style-analyzer';
+import type { StyleEnricher } from '../services/style-enricher';
 import { buildApp } from '../app';
 
 async function createImageServer() {
@@ -278,6 +279,80 @@ describe('GET /api/styles', () => {
             name: 'Giraud desert line art'
           })
         ])
+      })
+    });
+
+    await app.close();
+
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
+  });
+
+  it('fills placeholder style narratives from the configured style enricher on detail load', async () => {
+    const dataDir = './tmp/test-style-detail-enrichment';
+    fs.rmSync(dataDir, { recursive: true, force: true });
+
+    const { server, imageUrl } = await createImageServer();
+    const styleEnricher: StyleEnricher = {
+      async enrichStyle(input) {
+        expect(input.name).toBe('二次元动漫');
+        return {
+          shortDescription:
+            '二次元动漫是一种源自动画、漫画和游戏角色视觉的审美风格，强调平面化造型、清晰轮廓和富有情绪表达的角色设计。',
+          visualTraits:
+            '典型特征包括明亮大眼、符号化发型、干净线稿、高明度色彩、柔和赛璐珞式光影，以及强调角色姿态和表情的构图。',
+          promptHints:
+            '它适合角色立绘、头像、幻想插画和轻叙事场景，和写实摄影或厚重 3D 渲染相比，更重视线条、色块和角色可读性。'
+        };
+      }
+    };
+    const app = buildApp({
+      dataDir,
+      styleEnricher
+    });
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/collect',
+      payload: {
+        sourceSite: 'jimeng',
+        sourceWorkId: 'style-detail-enrichment',
+        sourceUrl:
+          'https://jimeng.jianying.com/ai-tool/work-detail/style-detail-enrichment?workDetailType=Image&itemType=9',
+        promptRaw: '二次元动漫风格，精致角色立绘，明亮眼睛',
+        imageSourceUrl: imageUrl,
+        approvedStyles: [
+          {
+            name: '二次元动漫',
+            termType: 'aesthetic_style'
+          }
+        ]
+      }
+    });
+    await waitForWorkDone(app, 'style-detail-enrichment');
+
+    const detailRes = await app.inject({
+      method: 'GET',
+      url: `/api/styles/${encodeURIComponent('二次元动漫')}`
+    });
+
+    expect(detailRes.statusCode).toBe(200);
+    expect(detailRes.json()).toEqual({
+      item: expect.objectContaining({
+        slug: '二次元动漫',
+        shortDescription: expect.stringContaining('动画、漫画和游戏'),
+        visualTraits: expect.stringContaining('赛璐珞'),
+        promptHints: expect.stringContaining('角色立绘'),
+        narrative: expect.objectContaining({
+          overview: expect.stringContaining('二次元动漫是一种')
+        })
       })
     });
 

@@ -17,6 +17,9 @@ export interface IngestWorkInput {
   payload: CollectWorkPayload;
   styleAnalyzer?: StyleAnalyzer;
   imageUploader?: ImageUploader;
+  styleEnrichmentQueue?: {
+    enqueueStyleIds: (styleIds: number[]) => void;
+  };
 }
 
 export interface StartedIngestWork extends CreateWorkResult {
@@ -140,7 +143,13 @@ async function continueIngestWork(input: IngestWorkInput, created: CreateWorkRes
           input.repository.clearWorkStyles(created.workId);
         }
 
-        applyStyleAnalysisToWork(input.repository, created.workId, analysis, hasApprovedStyles ? 'user' : 'llm');
+        const styleApplication = applyStyleAnalysisToWork(
+          input.repository,
+          created.workId,
+          analysis,
+          hasApprovedStyles ? 'user' : 'llm'
+        );
+        input.styleEnrichmentQueue?.enqueueStyleIds(styleApplication.createdStyleIds);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'unknown analysis error';
         input.repository.recordAnalysisRun({
@@ -182,6 +191,8 @@ export function applyStyleAnalysisToWork(
   analysis: StyleAnalysisResult,
   source: 'llm' | 'user'
 ) {
+  const createdStyleIds: number[] = [];
+
   for (const [index, candidate] of analysis.candidates.entries()) {
     if (!candidate.shouldBeStyleTag) {
       continue;
@@ -205,6 +216,9 @@ export function applyStyleAnalysisToWork(
         termType: resolvedStyle.termType,
         shortDescription: resolvedStyle.shortDescription
       });
+    if (!existingStyle) {
+      createdStyleIds.push(style.id);
+    }
 
     for (const aliasName of resolvedStyle.aliases) {
       repository.ensureStyleAlias({
@@ -225,4 +239,8 @@ export function applyStyleAnalysisToWork(
       source
     });
   }
+
+  return {
+    createdStyleIds
+  };
 }

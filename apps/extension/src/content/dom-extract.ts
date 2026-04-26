@@ -65,6 +65,21 @@ function getImageMetrics(image: HTMLImageElement) {
   };
 }
 
+const DETAIL_IMAGE_SELECTORS = [
+  '.image-player-KCJSe1 img',
+  '.image-player-container-V9ZRXE img',
+  '.image-player-content-Ml9sbe img',
+  '.image-left-content-myH1iF img',
+  '.preview-area-QscVpt img',
+  '.lv-modal img.image-eTuIBd',
+  'img.image-eTuIBd'
+].join(',');
+
+function hasUsableImageSource(image: HTMLImageElement) {
+  const src = image.currentSrc || image.src;
+  return Boolean(src) && !src.startsWith('data:');
+}
+
 function isVisibleImage(root: Document, image: HTMLImageElement) {
   const style = root.defaultView?.getComputedStyle(image);
   if (!style) {
@@ -72,6 +87,21 @@ function isVisibleImage(root: Document, image: HTMLImageElement) {
   }
 
   return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+}
+
+function isViewportIntersecting(root: Document, image: HTMLImageElement) {
+  const rect = image.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) {
+    return true;
+  }
+
+  const viewportWidth = root.defaultView?.innerWidth ?? root.documentElement.clientWidth;
+  const viewportHeight = root.defaultView?.innerHeight ?? root.documentElement.clientHeight;
+  if (!viewportWidth || !viewportHeight) {
+    return true;
+  }
+
+  return rect.bottom > 0 && rect.right > 0 && rect.top < viewportHeight && rect.left < viewportWidth;
 }
 
 function isAspectRatioMatch(candidateRatio: number, expectedRatio: number) {
@@ -102,39 +132,73 @@ function findPromptElement(root: Document): Element | null {
   ) ?? null;
 }
 
+function isLikelyThumbnail(src: string): boolean {
+  return /thumbnail|thumb[^b]|\bsmall\b|preview|mini|icon|avatar|\b\d{2,3}x\d{2,3}\b/i.test(src);
+}
+
+function isGalleryCoverImage(image: HTMLImageElement) {
+  return /\bcover-/i.test(String(image.className));
+}
+
+function getDetailImages(root: Document) {
+  return Array.from(root.querySelectorAll<HTMLImageElement>(DETAIL_IMAGE_SELECTORS));
+}
+
+export function hasLoadedJimengDetailImage(root: Document) {
+  return getDetailImages(root).some((image) => {
+    const metrics = getImageMetrics(image);
+    return (
+      hasUsableImageSource(image) &&
+      isVisibleImage(root, image) &&
+      isViewportIntersecting(root, image) &&
+      metrics.width >= 300 &&
+      metrics.height >= 300
+    );
+  });
+}
+
 function findPrimaryImage(root: Document, expectedAspectRatio?: string): HTMLImageElement | undefined {
   const expectedRatio = parseAspectRatio(expectedAspectRatio ?? '');
 
-  let candidates = Array.from(root.images)
-    .filter((image) => {
-      const src = image.currentSrc || image.src;
-      if (!src || src.startsWith('data:') || !isVisibleImage(root, image)) {
-        return false;
+  const buildCandidates = (images: HTMLImageElement[]) =>
+    images
+      .filter((image) => hasUsableImageSource(image) && isVisibleImage(root, image))
+      .map((image) => ({
+        image,
+        metrics: getImageMetrics(image),
+        isLoaded: image.naturalWidth > 0
+      }))
+      .filter((c) => c.metrics.width >= 80 && c.metrics.height >= 80);
+
+  const chooseWinner = (nextCandidates: ReturnType<typeof buildCandidates>) => {
+    let candidates = nextCandidates;
+    if (expectedRatio) {
+      const ratioMatched = candidates.filter((c) => isAspectRatioMatch(c.metrics.ratio, expectedRatio));
+      if (ratioMatched.length > 0) {
+        candidates = ratioMatched;
       }
+    }
 
-      const metrics = getImageMetrics(image);
-      // Exclude tiny images (avatars, icons) that cannot be the main artwork.
-      if (metrics.width < 80 || metrics.height < 80) {
-        return false;
-      }
+    return candidates.sort((left, right) => right.metrics.area - left.metrics.area)[0];
+  };
 
-      return metrics.area > 0;
-    })
-    .map((image) => ({
-      image,
-      metrics: getImageMetrics(image),
-      isLoaded: image.naturalWidth > 0
-    }));
-
-  // Prefer already-loaded images so that a lazy-loaded main image
-  // doesn't lose to an already-loaded thumbnail.
-  const loaded = candidates.filter((c) => c.isLoaded);
-  if (loaded.length > 0) {
-    candidates = loaded;
+  const detailWinner = chooseWinner(
+    buildCandidates(getDetailImages(root).filter((image) => isViewportIntersecting(root, image)))
+  );
+  if (detailWinner) {
+    console.log(
+      '[t2i-extract] selected detail image:',
+      (detailWinner.image.currentSrc || detailWinner.image.src).slice(0, 120)
+    );
+    return detailWinner.image;
   }
 
-  // Prefer images above the prompt element (main image is typically
-  // above the prompt; recommendations are usually below).
+  let candidates = buildCandidates(Array.from(root.images))
+    .filter((image) => {
+      const src = image.image.currentSrc || image.image.src;
+      return !isLikelyThumbnail(src) && !isGalleryCoverImage(image.image) && isViewportIntersecting(root, image.image);
+    });
+
   const promptEl = findPromptElement(root);
   if (promptEl) {
     const promptRect = promptEl.getBoundingClientRect();
@@ -147,33 +211,13 @@ function findPrimaryImage(root: Document, expectedAspectRatio?: string): HTMLIma
     }
   }
 
-  console.log(
-    '[t2i-extract] image candidates after filters:',
-    candidates.map((c) => ({
-      src: (c.image.currentSrc || c.image.src).slice(0, 120),
-      width: c.metrics.width,
-      height: c.metrics.height,
-      ratio: c.metrics.ratio.toFixed(2),
-      expectedRatio: expectedRatio?.toFixed(2),
-      isLoaded: c.isLoaded
-    }))
-  );
-
-  const ratioMatched = expectedRatio
-    ? candidates.filter((candidate) => isAspectRatioMatch(candidate.metrics.ratio, expectedRatio))
-    : [];
-
-  const pool = ratioMatched.length > 0 ? ratioMatched : candidates;
-
-  const winner = pool
-    .sort((left, right) => right.metrics.area - left.metrics.area)
-    .map((candidate) => candidate.image)[0];
+  const winner = chooseWinner(candidates);
 
   if (winner) {
-    console.log('[t2i-extract] selected image:', (winner.currentSrc || winner.src).slice(0, 120));
+    console.log('[t2i-extract] selected image:', (winner.image.currentSrc || winner.image.src).slice(0, 120));
   }
 
-  return winner;
+  return winner?.image;
 }
 
 function findAuthorAndDate(root: Document) {

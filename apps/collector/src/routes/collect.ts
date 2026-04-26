@@ -24,7 +24,8 @@ export async function registerCollectRoute(app: FastifyInstance) {
       cacheDir: path.join(app.collectorConfig.dataDir, 'cache', 'originals'),
       payload,
       styleAnalyzer: app.styleAnalyzer,
-      imageUploader: app.imageUploader
+      imageUploader: app.imageUploader,
+      styleEnrichmentQueue: app.styleEnrichmentQueue
     });
     const task = started.run().catch((error) => {
       request.log.error(
