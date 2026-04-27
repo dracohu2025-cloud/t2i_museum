@@ -51,18 +51,19 @@ async function continueIngestWork(input: IngestWorkInput, created: CreateWorkRes
   const approvedStyles = input.payload.approvedStyles ?? [];
   const hasApprovedStyles = approvedStyles.length > 0;
 
+  let initialSnapshot = input.repository.getWorkIngestSnapshot(created.workId);
+
   if (created.status === 'already_collected') {
-    const existing = input.repository.getWorkIngestSnapshot(created.workId);
-    if (!existing) {
+    if (!initialSnapshot) {
       return;
     }
 
-    const shouldRebuildImageCache = !existing.imageLocalPath || created.imageSourceChanged;
-    const shouldAnalyze = hasApprovedStyles || (Boolean(input.styleAnalyzer) && existing.styleCount === 0);
+    const shouldRebuildImageCache = !initialSnapshot.imageLocalPath || created.imageSourceChanged;
+    const shouldAnalyze = hasApprovedStyles || (Boolean(input.styleAnalyzer) && initialSnapshot.styleCount === 0);
     const shouldUpload =
       Boolean(input.imageUploader) &&
-      (Boolean(existing.imageLocalPath) || shouldRebuildImageCache) &&
-      (existing.uploadStatus !== 'uploaded' || shouldRebuildImageCache);
+      (Boolean(initialSnapshot.imageLocalPath) || shouldRebuildImageCache) &&
+      (initialSnapshot.uploadStatus !== 'uploaded' || shouldRebuildImageCache);
 
     if (!shouldRebuildImageCache && !shouldAnalyze && !shouldUpload) {
       return;
@@ -70,53 +71,73 @@ async function continueIngestWork(input: IngestWorkInput, created: CreateWorkRes
   }
 
   try {
-    const existing = input.repository.getWorkIngestSnapshot(created.workId);
-    const shouldRebuildImageCache = !existing?.imageLocalPath || created.imageSourceChanged;
+    const shouldRebuildImageCache = !initialSnapshot?.imageLocalPath || created.imageSourceChanged;
+    const shouldAnalyze = hasApprovedStyles || (Boolean(input.styleAnalyzer) && (initialSnapshot?.styleCount ?? 0) === 0);
 
-    if (shouldRebuildImageCache) {
-      input.repository.markIngestStage(created.workId, 'caching');
-      const cachedImage = await cacheImageFromSource({
-        sourceWorkId: input.payload.sourceWorkId,
-        imageSourceUrl: input.payload.imageSourceUrl,
-        cacheDir: input.cacheDir
-      });
+    // Phase 1: Start image download and LLM analysis in parallel.
+    // Image download is independent of LLM analysis — no need to wait.
+    const cachePromise = shouldRebuildImageCache
+      ? (async () => {
+          input.repository.markIngestStage(created.workId, 'caching');
+          const cachedImage = await cacheImageFromSource({
+            sourceWorkId: input.payload.sourceWorkId,
+            imageSourceUrl: input.payload.imageSourceUrl,
+            cacheDir: input.cacheDir
+          });
+          input.repository.updateCachedImage(created.workId, cachedImage);
+          return cachedImage;
+        })()
+      : Promise.resolve(null);
 
-      input.repository.updateCachedImage(created.workId, cachedImage);
-    }
+    const analysisPromise = shouldAnalyze
+      ? (async () => {
+          input.repository.markIngestStage(created.workId, 'analyzing');
+          const analysis = hasApprovedStyles
+            ? { candidates: approvedStyles.map(styleTagToCandidate) }
+            : await input.styleAnalyzer!.analyzePrompt({
+                promptRaw: input.payload.promptRaw
+              });
+          return analysis;
+        })()
+      : Promise.resolve<StyleAnalysisResult | null>(null);
 
-    const current = input.repository.getWorkIngestSnapshot(created.workId);
-    const shouldAnalyze = hasApprovedStyles || (Boolean(input.styleAnalyzer) && current?.styleCount === 0);
+    // Phase 2: Wait for image download, then start COS upload in parallel with ongoing LLM.
+    const cachedImage = await cachePromise;
+
+    // Re-read snapshot after caching to get fresh imageLocalPath.
+    const snapshotAfterCache = cachedImage
+      ? input.repository.getWorkIngestSnapshot(created.workId)
+      : initialSnapshot;
+
     const shouldUpload =
       Boolean(input.imageUploader) &&
-      Boolean(current?.imageLocalPath) &&
-      (current?.uploadStatus !== 'uploaded' || shouldRebuildImageCache);
+      Boolean(snapshotAfterCache?.imageLocalPath) &&
+      (snapshotAfterCache?.uploadStatus !== 'uploaded' || shouldRebuildImageCache);
 
-    if (input.imageUploader && shouldUpload && current?.imageLocalPath) {
-      try {
-        input.repository.markIngestStage(created.workId, 'uploading');
-        input.repository.markUploadStarted(created.workId);
-        const upload = await input.imageUploader.uploadImage({
-          sourceSite: input.payload.sourceSite,
-          sourceWorkId: input.payload.sourceWorkId,
-          localPath: current.imageLocalPath
-        });
-        input.repository.markUploadSucceeded(created.workId, upload);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'unknown upload error';
-        input.repository.markUploadFailed(created.workId, message);
-      }
-    }
-
-    if (shouldAnalyze) {
-      try {
-        input.repository.markIngestStage(created.workId, 'analyzing');
-        const analysis = hasApprovedStyles
-          ? {
-              candidates: approvedStyles.map(styleTagToCandidate)
-            }
-          : await input.styleAnalyzer!.analyzePrompt({
-              promptRaw: input.payload.promptRaw
+    const uploadPromise = shouldUpload && snapshotAfterCache?.imageLocalPath
+      ? (async () => {
+          try {
+            input.repository.markIngestStage(created.workId, 'uploading');
+            input.repository.markUploadStarted(created.workId);
+            const upload = await input.imageUploader!.uploadImage({
+              sourceSite: input.payload.sourceSite,
+              sourceWorkId: input.payload.sourceWorkId,
+              localPath: snapshotAfterCache.imageLocalPath
             });
+            input.repository.markUploadSucceeded(created.workId, upload);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : 'unknown upload error';
+            input.repository.markUploadFailed(created.workId, message);
+          }
+        })()
+      : Promise.resolve();
+
+    // Phase 3: Wait for LLM analysis and COS upload (both in parallel).
+    const [analysis] = await Promise.all([analysisPromise, uploadPromise]);
+
+    // Phase 4: Apply analysis results.
+    if (analysis) {
+      try {
         const metadata = hasApprovedStyles
           ? {
               provider: 'user',
