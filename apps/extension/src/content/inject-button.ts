@@ -441,9 +441,7 @@ function bindCollectClick(
   button.dataset.t2iMuseumBindingId = nextBindingId;
 
   button.onclick = async () => {
-    console.log('[t2i] button onclick fired, status:', state.status);
     if (state.status === 'collecting') {
-      console.log('[t2i] already collecting, ignoring click');
       return;
     }
 
@@ -457,9 +455,7 @@ function bindCollectClick(
     });
 
     try {
-      console.log('[t2i] calling onCollect...');
       const result = await options.onCollect();
-      console.log('[t2i] onCollect returned:', result);
       if (button.dataset.t2iMuseumBindingId !== nextBindingId) {
         return;
       }
@@ -472,7 +468,6 @@ function bindCollectClick(
         progressTone: typeof result?.progressTone === 'string' ? result.progressTone : state.progressTone
       });
     } catch (error) {
-      console.error('[t2i] onCollect threw error:', error);
       if (button.dataset.t2iMuseumBindingId !== nextBindingId) {
         return;
       }

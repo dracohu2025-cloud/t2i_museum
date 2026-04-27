@@ -104,31 +104,23 @@ function readCollectorError(data: unknown, fallback: string): string {
 }
 
 async function ensureJimengContentScript(tabId: number, url = '') {
-  console.log('[t2i-bg] ensureJimengContentScript called, tabId:', tabId, 'url:', url);
   if (!scriptingApi?.executeScript) {
-    console.log('[t2i-bg] no scripting API');
     return;
   }
 
   if (!url.startsWith(JIMENG_AI_TOOL_URL_PREFIX)) {
-    console.log('[t2i-bg] url does not match prefix');
     return;
   }
 
   try {
-    console.log('[t2i-bg] executing content script...');
     await scriptingApi.executeScript({
       target: { tabId },
       files: ['content/index.global.js']
     });
-    console.log('[t2i-bg] content script executed, sending sync message');
     await tabsApi?.sendMessage?.(tabId, {
       type: SYNC_JIMENG_ROUTE_RUNTIME_MESSAGE
     });
-    console.log('[t2i-bg] sync message sent');
-  } catch (err) {
-    console.error('[t2i-bg] ensureJimengContentScript error:', err);
-  }
+  } catch {}
 }
 
 async function ensureExistingJimengTabs() {
@@ -150,9 +142,7 @@ async function ensureExistingJimengTabs() {
         return ensureJimengContentScript(tab.id, tab.url ?? '');
       })
     );
-  } catch (err) {
-    console.error('[t2i-bg] ensureExistingJimengTabs error:', err);
-  }
+  } catch {}
 }
 
 function registerNavigationListener(
@@ -178,7 +168,6 @@ function registerNavigationListener(
 }
 
 tabsApi?.onUpdated?.addListener((tabId, changeInfo, tab) => {
-  console.log('[t2i-bg] tabs.onUpdated', tabId, changeInfo);
   if (!changeInfo.url && changeInfo.status !== 'complete') {
     return;
   }
@@ -207,7 +196,6 @@ runtimeApi?.onStartup?.addListener(() => {
   void ensureExistingJimengTabs();
 });
 void ensureExistingJimengTabs();
-console.log('[t2i-bg] background listeners registered');
 
 runtimeApi?.onMessage?.addListener((message, _sender, sendResponse) => {
   if (!message || typeof message !== 'object') {
@@ -218,7 +206,6 @@ runtimeApi?.onMessage?.addListener((message, _sender, sendResponse) => {
 
   if (messageType === LOOKUP_WORK_PROGRESS_RUNTIME_MESSAGE) {
     const sourceWorkId = (message as { sourceWorkId?: string }).sourceWorkId ?? '';
-    console.log('[t2i-bg] lookup work progress:', sourceWorkId);
 
     void (async () => {
       try {
@@ -253,7 +240,6 @@ runtimeApi?.onMessage?.addListener((message, _sender, sendResponse) => {
 
   if (messageType === COLLECT_PREVIEW_RUNTIME_MESSAGE) {
     const payload = (message as { payload?: unknown }).payload;
-    console.log('[t2i-bg] collect preview request');
 
     void (async () => {
       try {
@@ -297,7 +283,6 @@ runtimeApi?.onMessage?.addListener((message, _sender, sendResponse) => {
   }
 
   const payload = (message as { payload?: unknown }).payload;
-  console.log('[t2i-bg] collect request');
 
   void (async () => {
     try {

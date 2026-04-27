@@ -5,3 +5,6 @@ dist
 data
 .DS_Store
 coverage
+tmp
+*.tsbuildinfo
+.opencode

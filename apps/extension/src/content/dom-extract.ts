@@ -186,10 +186,6 @@ function findPrimaryImage(root: Document, expectedAspectRatio?: string): HTMLIma
     buildCandidates(getDetailImages(root).filter((image) => isViewportIntersecting(root, image)))
   );
   if (detailWinner) {
-    console.log(
-      '[t2i-extract] selected detail image:',
-      (detailWinner.image.currentSrc || detailWinner.image.src).slice(0, 120)
-    );
     return detailWinner.image;
   }
 
@@ -211,13 +207,7 @@ function findPrimaryImage(root: Document, expectedAspectRatio?: string): HTMLIma
     }
   }
 
-  const winner = chooseWinner(candidates);
-
-  if (winner) {
-    console.log('[t2i-extract] selected image:', (winner.image.currentSrc || winner.image.src).slice(0, 120));
-  }
-
-  return winner?.image;
+  return chooseWinner(candidates)?.image;
 }
 
 function findAuthorAndDate(root: Document) {
@@ -253,13 +243,6 @@ export function extractJimengDetailPayload(root: Document): CollectWorkPayload {
       'failed to locate primary image: no suitable image found on the detail page'
     );
   }
-
-  console.log('[t2i-extract] payload extracted:', {
-    workId,
-    imageSourceUrl: imageSourceUrl.slice(0, 120),
-    aspectRatio,
-    imageSize: image ? `${image.naturalWidth}x${image.naturalHeight}` : 'unknown'
-  });
 
   return {
     sourceSite: 'jimeng',

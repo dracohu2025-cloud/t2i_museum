@@ -165,27 +165,22 @@ function mapRuntimeError(message: string): string {
 }
 
 async function postCollectPayload(payload: unknown) {
-  console.log('[t2i] postCollectPayload start');
   if (chromeLike?.runtime?.sendMessage) {
     return await new Promise<{ message?: string; status?: string }>((resolve, reject) => {
-      console.log('[t2i] sending COLLECT_RUNTIME_MESSAGE');
       chromeLike.runtime?.sendMessage?.(
         {
           type: COLLECT_RUNTIME_MESSAGE,
           payload
         },
         (rawResponse) => {
-          console.log('[t2i] collect response received:', rawResponse);
           const response = (rawResponse ?? {}) as CollectRuntimeResponse;
           const lastError = chromeLike.runtime?.lastError;
           if (lastError?.message) {
-            console.error('[t2i] collect lastError:', lastError.message);
             reject(new Error(mapRuntimeError(lastError.message)));
             return;
           }
 
           if (!response?.ok) {
-            console.error('[t2i] collect response not ok:', response?.error);
             reject(new Error(response?.error ?? 'collector request failed'));
             return;
           }
@@ -213,32 +208,26 @@ async function postCollectPayload(payload: unknown) {
 }
 
 async function previewCollectStyles(payload: CollectWorkPayload): Promise<StylePreviewCandidate[]> {
-  console.log('[t2i] previewCollectStyles start');
   if (!chromeLike?.runtime?.sendMessage) {
-    console.error('[t2i] sendMessage unavailable');
     throw new Error('扩展消息通道不可用，请在 chrome://extensions 刷新 t2i_museum Collector 后重试。');
   }
 
   return await new Promise<StylePreviewCandidate[]>((resolve, reject) => {
-    console.log('[t2i] sending COLLECT_PREVIEW_RUNTIME_MESSAGE');
     chromeLike.runtime?.sendMessage?.(
       {
         type: COLLECT_PREVIEW_RUNTIME_MESSAGE,
         payload
       },
       (rawResponse) => {
-        console.log('[t2i] preview response received:', rawResponse);
         const response = (rawResponse ?? {}) as StylePreviewRuntimeResponse;
         const lastError = chromeLike.runtime?.lastError;
         if (lastError?.message) {
-          console.error('[t2i] preview lastError:', lastError.message);
           reject(new Error(mapRuntimeError(lastError.message)));
           return;
         }
 
         if (!response?.ok) {
           const message = response?.error ?? response.data?.error ?? response.data?.message ?? '风格预分析失败';
-          console.error('[t2i] preview response not ok:', message);
           reject(new Error(message));
           return;
         }
@@ -790,10 +779,8 @@ function bootstrap() {
   disposed = false;
   const isReinit = document.documentElement.dataset.t2iMuseumContentScript === 'ready';
   document.documentElement.dataset.t2iMuseumContentScript = 'ready';
-  console.log('[t2i] bootstrap called, isReinit:', isReinit, 'pathname:', window.location.pathname);
 
   if (isReinit) {
-    console.log('[t2i] reinitializing...');
     if (routeObserver) {
       routeObserver.disconnect();
       routeObserver = null;
@@ -811,55 +798,45 @@ function bootstrap() {
     bindingId: contentBindingId,
     shouldInject: () => window.location.pathname.includes(JIMENG_DETAIL_PATH_SEGMENT),
     onCollect: async () => {
-      console.log('[t2i] onCollect started');
+      await waitForMainImage(document);
+      const payload = extractJimengDetailPayload(document);
+      let previewWarning = '';
+      let candidates: StylePreviewCandidate[] = [];
       try {
-        await waitForMainImage(document);
-        const payload = extractJimengDetailPayload(document);
-        console.log('[t2i] payload extracted:', payload.sourceWorkId);
-        let previewWarning = '';
-        let candidates: StylePreviewCandidate[] = [];
-        try {
-          candidates = await previewCollectStyles(payload);
-        } catch (error) {
-          previewWarning = error instanceof Error ? error.message : '风格预分析失败';
-          console.warn('[t2i] preview failed, continuing with manual style review:', previewWarning);
-        }
-        console.log('[t2i] candidates received:', candidates.length);
-        const approvedStyles = await openStyleReviewDialog(
-          document,
-          candidates,
-          payload.promptRaw,
-          previewWarning
-        );
-        console.log('[t2i] dialog closed, approvedStyles:', approvedStyles?.length ?? 0);
-        if (!isCurrentInstance()) {
-          return;
-        }
-
-        if (!approvedStyles) {
-          const canceled: CollectButtonActionResult = {
-            nextStatus: 'idle',
-            message: '已取消入馆。',
-            progressVisible: false,
-            progressPercent: 0,
-            progressLabel: '',
-            progressTone: 'idle'
-          };
-          return canceled;
-        }
-
-        const result = await postCollectPayload({
-          ...payload,
-          approvedStyles
-        });
-        scheduleProgressPolling(payload.sourceWorkId, currentRouteToken, options);
-        return toCollectingActionResult(
-          result.message ?? '采集请求已发送，collector 已接管任务，你现在可以切换或关闭当前页面。'
-        );
-      } catch (err) {
-        console.error('[t2i] onCollect error:', err);
-        throw err;
+        candidates = await previewCollectStyles(payload);
+      } catch (error) {
+        previewWarning = error instanceof Error ? error.message : '风格预分析失败';
       }
+      const approvedStyles = await openStyleReviewDialog(
+        document,
+        candidates,
+        payload.promptRaw,
+        previewWarning
+      );
+      if (!isCurrentInstance()) {
+        return;
+      }
+
+      if (!approvedStyles) {
+        const canceled: CollectButtonActionResult = {
+          nextStatus: 'idle',
+          message: '已取消入馆。',
+          progressVisible: false,
+          progressPercent: 0,
+          progressLabel: '',
+          progressTone: 'idle'
+        };
+        return canceled;
+      }
+
+      const result = await postCollectPayload({
+        ...payload,
+        approvedStyles
+      });
+      scheduleProgressPolling(payload.sourceWorkId, currentRouteToken, options);
+      return toCollectingActionResult(
+        result.message ?? '采集请求已发送，collector 已接管任务，你现在可以切换或关闭当前页面。'
+      );
     }
   };
 

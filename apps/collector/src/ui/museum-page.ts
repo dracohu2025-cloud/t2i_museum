@@ -464,6 +464,39 @@ export function renderMuseumPage() {
         margin-bottom: 14px;
       }
 
+      .floating-style-title {
+        position: fixed;
+        top: 12px;
+        left: 0;
+        z-index: 50;
+        display: inline-flex;
+        align-items: center;
+        max-width: min(760px, calc(100vw - 32px));
+        padding: 10px 16px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 999px;
+        background: rgba(5, 12, 22, 0.78);
+        box-shadow: 0 16px 42px rgba(0, 0, 0, 0.34);
+        color: var(--text);
+        font-family: "Cormorant Garamond", serif;
+        font-size: clamp(24px, 2.8vw, 38px);
+        font-weight: 600;
+        line-height: 1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        backdrop-filter: blur(16px);
+        pointer-events: none;
+        opacity: 0;
+        transform: translateY(-8px);
+        transition: opacity 160ms ease, transform 160ms ease;
+      }
+
+      .floating-style-title[data-visible="true"] {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
       .style-copy {
         width: min(760px, 100%);
       }
@@ -1063,6 +1096,12 @@ export function renderMuseumPage() {
           padding: 18px;
         }
 
+        .floating-style-title {
+          left: 10px !important;
+          right: 10px;
+          max-width: calc(100vw - 20px);
+        }
+
         .masthead-copy {
           gap: 10px;
         }
@@ -1126,10 +1165,10 @@ export function renderMuseumPage() {
           <div class="eyebrow">Local-first Style Atlas</div>
           <div class="masthead-copy-main">
             <h1 class="title">
-              <a class="title-link" id="museum-home-link" href="/museum" data-active="true" aria-current="page">t2i_museum</a>
+              <a class="title-link" id="museum-home-link" href="/museum" data-active="true" aria-current="page">Graphics Academy</a>
             </h1>
             <p class="lede">
-              收集即梦 detail 页样例，自动抽取绘画风格词，并把图片、风格、含义串成一个可浏览的本地博物馆。
+              收集即梦图片样例，自动抽取绘画风格词，并把图片、风格、含义串成一个可学习和浏览的本地视觉库。
             </p>
           </div>
         </div>
@@ -1167,6 +1206,7 @@ export function renderMuseumPage() {
       const styleShelfQueryNode = document.getElementById('style-shelf-query');
       const contentNode = document.getElementById('content');
       const homeLinkNode = document.getElementById('museum-home-link');
+      let stickyStyleTitleCleanup = null;
       const state = {
         works: [],
         styles: [],
@@ -1177,6 +1217,61 @@ export function renderMuseumPage() {
         adminPanelOpen: false,
         flash: null
       };
+
+      function cleanupStickyStyleTitle() {
+        if (typeof stickyStyleTitleCleanup === 'function') {
+          stickyStyleTitleCleanup();
+          stickyStyleTitleCleanup = null;
+        }
+      }
+
+      function bindStickyStyleTitle() {
+        cleanupStickyStyleTitle();
+
+        const heroNode = contentNode.querySelector('.style-hero');
+        const titleNode = contentNode.querySelector('[data-style-hero-title]');
+        const floatingTitleNode = contentNode.querySelector('[data-floating-style-title]');
+        if (!(heroNode instanceof HTMLElement) || !(titleNode instanceof HTMLElement) || !(floatingTitleNode instanceof HTMLElement)) {
+          return;
+        }
+
+        let ticking = false;
+        const update = () => {
+          ticking = false;
+          const titleRect = titleNode.getBoundingClientRect();
+          const contentRect = contentNode.getBoundingClientRect();
+          const shouldShow = titleRect.top <= 12 && contentRect.bottom > 80;
+
+          floatingTitleNode.dataset.visible = shouldShow ? 'true' : 'false';
+          if (!shouldShow) {
+            return;
+          }
+
+          const left = Math.max(12, contentRect.left + 28);
+          const width = Math.min(contentRect.width - 56, 760);
+          floatingTitleNode.style.left = left + 'px';
+          floatingTitleNode.style.maxWidth = Math.max(220, width) + 'px';
+        };
+
+        const schedule = () => {
+          if (ticking) {
+            return;
+          }
+
+          ticking = true;
+          window.requestAnimationFrame(update);
+        };
+
+        window.addEventListener('scroll', schedule, { passive: true });
+        window.addEventListener('resize', schedule);
+        schedule();
+
+        stickyStyleTitleCleanup = () => {
+          window.removeEventListener('scroll', schedule);
+          window.removeEventListener('resize', schedule);
+          floatingTitleNode.remove();
+        };
+      }
 
       function escapeHtml(value) {
         return String(value)
@@ -1829,7 +1924,7 @@ export function renderMuseumPage() {
             \${detail.heroImageUrl ? \`<img src="\${escapeHtml(detail.heroImageUrl)}" alt="\${escapeHtml(detail.name)}" />\` : ''}
             <div class="style-meta">
               <div class="eyebrow">\${escapeHtml(detail.termType.replaceAll('_', ' '))}</div>
-              <h2 class="style-hero-title">\${escapeHtml(detail.name)}</h2>
+              <h2 class="style-hero-title" data-style-hero-title>\${escapeHtml(detail.name)}</h2>
               <div class="style-copy">
                 <p>\${escapeHtml(detail.narrative?.overview || detail.shortDescription || '这个风格已经进入 catalog，但解释仍待补全。')}</p>
                 <div class="style-lineage-card">
@@ -1852,6 +1947,7 @@ export function renderMuseumPage() {
             </div>
             \${renderStyleAdmin(detail, styles)}
           </section>
+          <div class="floating-style-title" data-floating-style-title="true" data-visible="false">\${escapeHtml(detail.name)}</div>
 
           <section class="content-panel style-work-grid">
             <div class="content-head">
@@ -1864,6 +1960,7 @@ export function renderMuseumPage() {
         \`;
 
         bindStyleAdmin(detail);
+        bindStickyStyleTitle();
       }
 
       async function loadJson(url) {
@@ -2038,6 +2135,7 @@ export function renderMuseumPage() {
       }
 
       async function loadMuseumState(activeSlug, activeWorkId, replacePath) {
+        cleanupStickyStyleTitle();
         contentNode.innerHTML = '<div class="content-panel"><div class="loading">Loading museum…</div></div>';
 
         const [worksPayload, stylesPayload] = await Promise.all([

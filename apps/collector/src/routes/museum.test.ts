@@ -17,7 +17,8 @@ describe('GET /museum', () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.headers['content-type']).toContain('text/html');
-    expect(res.body).toContain('t2i_museum');
+    expect(res.body).toContain('Graphics Academy');
+    expect(res.body).toContain('收集即梦图片样例，自动抽取绘画风格词');
     expect(res.body).toContain('/api/styles');
     expect(res.body).toContain('/api/works/');
     expect(res.body).toContain('work-delete-trigger');
