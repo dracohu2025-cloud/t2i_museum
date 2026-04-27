@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
 
+import { needsStyleEnrichment } from './style-enrichment-queue';
 import {
   deriveStyleDisplayName,
   deriveStyleNarrative,
@@ -59,6 +60,7 @@ export interface StyleDetail {
   visualTraits: string;
   promptHints: string;
   narrative: StyleNarrative;
+  needsEnrichment: boolean;
   heroWorkId: number | null;
   heroImageUrl: string;
   heroPrompt: string;
@@ -454,6 +456,11 @@ export function getStyleDetail(
     visualTraits: style.visual_traits,
     promptHints: style.prompt_hints,
     narrative,
+    needsEnrichment: needsStyleEnrichment({
+      shortDescription: style.short_description,
+      visualTraits: style.visual_traits,
+      promptHints: style.prompt_hints
+    }),
     heroWorkId: style.hero_work_id,
     heroImageUrl: toPublicImageUrl(hero.path, dataDir, hero.cosUrl),
     heroPrompt: hero.prompt,

@@ -466,26 +466,28 @@ export function renderMuseumPage() {
 
       .floating-style-title {
         position: fixed;
-        top: 12px;
-        left: 0;
+        top: 20px;
+        right: 20px;
         z-index: 50;
         display: inline-flex;
         align-items: center;
-        max-width: min(760px, calc(100vw - 32px));
-        padding: 10px 16px;
-        border: 1px solid rgba(255, 255, 255, 0.12);
+        justify-content: center;
+        height: 30px;
+        max-width: min(240px, calc(100vw - 40px));
+        padding: 0 14px;
+        border: 1px solid rgba(235, 200, 139, 0.2);
         border-radius: 999px;
-        background: rgba(5, 12, 22, 0.78);
-        box-shadow: 0 16px 42px rgba(0, 0, 0, 0.34);
+        background: rgba(7, 17, 27, 0.98);
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
         color: var(--text);
-        font-family: "Cormorant Garamond", serif;
-        font-size: clamp(24px, 2.8vw, 38px);
-        font-weight: 600;
+        font-family: "IBM Plex Sans", sans-serif;
+        font-size: 14px;
+        font-weight: 700;
         line-height: 1;
+        letter-spacing: 0;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        backdrop-filter: blur(16px);
         pointer-events: none;
         opacity: 0;
         transform: translateY(-8px);
@@ -762,6 +764,74 @@ export function renderMuseumPage() {
         color: #d7e2ed;
         font-size: 14px;
         line-height: 1.75;
+      }
+
+      .narrative-loading {
+        position: relative;
+        overflow: hidden;
+        background: rgba(255, 255, 255, 0.04);
+        border-radius: 8px;
+        color: transparent !important;
+        user-select: none;
+        pointer-events: none;
+      }
+
+      .narrative-loading::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+          90deg,
+          transparent 0%,
+          rgba(255, 255, 255, 0.06) 40%,
+          rgba(255, 255, 255, 0.1) 50%,
+          rgba(255, 255, 255, 0.06) 60%,
+          transparent 100%
+        );
+        transform: translateX(-100%);
+        animation: narrative-shimmer 2s ease-in-out infinite;
+      }
+
+      @keyframes narrative-shimmer {
+        0% {
+          transform: translateX(-100%);
+        }
+        100% {
+          transform: translateX(100%);
+        }
+      }
+
+      .narrative-loading-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .narrative-loading-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--accent);
+        animation: narrative-dot-pulse 1.2s ease-in-out infinite;
+      }
+
+      .narrative-loading-dot:nth-child(2) {
+        animation-delay: 0.2s;
+      }
+
+      .narrative-loading-dot:nth-child(3) {
+        animation-delay: 0.4s;
+      }
+
+      @keyframes narrative-dot-pulse {
+        0%, 60%, 100% {
+          opacity: 0.3;
+          transform: scale(0.75);
+        }
+        30% {
+          opacity: 1;
+          transform: scale(1.15);
+        }
       }
 
       .style-edit-list {
@@ -1097,9 +1167,9 @@ export function renderMuseumPage() {
         }
 
         .floating-style-title {
-          left: 10px !important;
+          left: auto !important;
           right: 10px;
-          max-width: calc(100vw - 20px);
+          top: 10px;
         }
 
         .masthead-copy {
@@ -1240,17 +1310,23 @@ export function renderMuseumPage() {
           ticking = false;
           const titleRect = titleNode.getBoundingClientRect();
           const contentRect = contentNode.getBoundingClientRect();
-          const shouldShow = titleRect.top <= 12 && contentRect.bottom > 80;
+          const stickyTop = window.innerWidth <= 760 ? 10 : 20;
+          const shouldShow = titleRect.top <= stickyTop && contentRect.bottom > 96;
 
           floatingTitleNode.dataset.visible = shouldShow ? 'true' : 'false';
           if (!shouldShow) {
             return;
           }
 
-          const left = Math.max(12, contentRect.left + 28);
-          const width = Math.min(contentRect.width - 56, 760);
-          floatingTitleNode.style.left = left + 'px';
-          floatingTitleNode.style.maxWidth = Math.max(220, width) + 'px';
+          const isNarrowViewport = window.innerWidth <= 760;
+          if (isNarrowViewport) {
+            floatingTitleNode.style.left = 'auto';
+            floatingTitleNode.style.right = '10px';
+            return;
+          }
+
+          floatingTitleNode.style.left = 'auto';
+          floatingTitleNode.style.right = '20px';
         };
 
         const schedule = () => {
@@ -1880,6 +1956,12 @@ export function renderMuseumPage() {
                       <a class="action-button" data-variant="ghost" href="\${escapeHtml(detail.heroImageUrl || '#works-in-style')}">查看当前 HERO</a>
                     </div>
                   </form>
+                  <div style="margin-top: 18px; padding-top: 18px; border-top: 1px solid rgba(255,133,133,0.18);">
+                    <p style="margin: 0 0 12px; color: var(--muted); font-size: 13px; line-height: 1.6;">删除当前风格会同时移除所有关联的别名和作品映射。作品本身不会被删除。</p>
+                    <div class="button-row">
+                      <button class="action-button" data-variant="danger" id="style-delete-trigger" type="button">删除此风格</button>
+                    </div>
+                  </div>
                 </article>
 
                 <article class="admin-panel">
@@ -1918,7 +2000,19 @@ export function renderMuseumPage() {
         \`;
       }
 
-      function renderStyleDetail(detail, styles) {
+      function renderStyleDetail(detail, styles, loadingNarrative) {
+        const narrativeIsLoading = loadingNarrative === true;
+        const narrativeLoadingClass = narrativeIsLoading ? ' narrative-loading' : '';
+        const narrativeOverview = narrativeIsLoading
+          ? '&nbsp;'
+          : escapeHtml(detail.narrative?.overview || detail.shortDescription || '这个风格已经进入 catalog，但解释仍待补全。');
+        const narrativeLineage = narrativeIsLoading
+          ? '&nbsp;'
+          : escapeHtml(detail.narrative?.lineage || detail.shortDescription || '这里应该解释这种风格的渊源、代表创作者、视觉传统与后续演化脉络。');
+        const narrativeCharacteristics = narrativeIsLoading
+          ? '&nbsp;'
+          : escapeHtml(detail.narrative?.characteristics || detail.visualTraits || '这里应该解释这种风格在构图、线条、色彩和材质上的典型特征。');
+
         contentNode.innerHTML = \`
           <section class="style-hero">
             \${detail.heroImageUrl ? \`<img src="\${escapeHtml(detail.heroImageUrl)}" alt="\${escapeHtml(detail.name)}" />\` : ''}
@@ -1926,20 +2020,22 @@ export function renderMuseumPage() {
               <div class="eyebrow">\${escapeHtml(detail.termType.replaceAll('_', ' '))}</div>
               <h2 class="style-hero-title" data-style-hero-title>\${escapeHtml(detail.name)}</h2>
               <div class="style-copy">
-                <p>\${escapeHtml(detail.narrative?.overview || detail.shortDescription || '这个风格已经进入 catalog，但解释仍待补全。')}</p>
+                <p>\${narrativeOverview}</p>
                 <div class="style-lineage-card">
-                  <div class="style-lineage-grid">
+                  <div class="style-lineage-grid" id="style-narrative-grid">
                     <section class="style-lineage-section">
-                      <div class="style-lineage-label">这是什么</div>
-                      <p>\${escapeHtml(detail.narrative?.overview || detail.shortDescription || '这里应该先解释这个 canonical style 到底代表什么。')}</p>
+                      <div class="style-lineage-label">
+                        \${narrativeIsLoading ? '<span class="narrative-loading-label">正在通过大模型更新释义<span class="narrative-loading-dot"></span><span class="narrative-loading-dot"></span><span class="narrative-loading-dot"></span></span>' : '这是什么'}
+                      </div>
+                      <p data-narrative-field="overview"\${narrativeIsLoading ? ' class="narrative-loading"' : ''}>\${narrativeOverview}</p>
                     </section>
                     <section class="style-lineage-section">
                       <div class="style-lineage-label">渊源与传承</div>
-                      <p>\${escapeHtml(detail.narrative?.lineage || detail.shortDescription || '这里应该解释这种风格的渊源、代表创作者、视觉传统与后续演化脉络。')}</p>
+                      <p data-narrative-field="lineage"\${narrativeIsLoading ? ' class="narrative-loading"' : ''}>\${narrativeLineage}</p>
                     </section>
                     <section class="style-lineage-section">
                       <div class="style-lineage-label">典型特征</div>
-                      <p>\${escapeHtml(detail.narrative?.characteristics || detail.visualTraits || '这里应该解释这种风格在构图、线条、色彩和材质上的典型特征。')}</p>
+                      <p data-narrative-field="characteristics"\${narrativeIsLoading ? ' class="narrative-loading"' : ''}>\${narrativeCharacteristics}</p>
                     </section>
                   </div>
                 </div>
@@ -1950,11 +2046,6 @@ export function renderMuseumPage() {
           <div class="floating-style-title" data-floating-style-title="true" data-visible="false">\${escapeHtml(detail.name)}</div>
 
           <section class="content-panel style-work-grid">
-            <div class="content-head">
-              <div>
-                <h2>Works In This Style</h2>
-              </div>
-            </div>
             <div class="gallery">\${detail.works.map(renderWorkCard).join('')}</div>
           </section>
         \`;
@@ -2002,6 +2093,67 @@ export function renderMuseumPage() {
 
       function clearFlash() {
         state.flash = null;
+      }
+
+      function updateNarrativeContent(narrative) {
+        const overviewEl = contentNode.querySelector('[data-narrative-field="overview"]');
+        const lineageEl = contentNode.querySelector('[data-narrative-field="lineage"]');
+        const characteristicsEl = contentNode.querySelector('[data-narrative-field="characteristics"]');
+
+        if (overviewEl) {
+          overviewEl.textContent = narrative.overview;
+          overviewEl.classList.remove('narrative-loading');
+        }
+        if (lineageEl) {
+          lineageEl.textContent = narrative.lineage;
+          lineageEl.classList.remove('narrative-loading');
+        }
+        if (characteristicsEl) {
+          characteristicsEl.textContent = narrative.characteristics;
+          characteristicsEl.classList.remove('narrative-loading');
+        }
+
+        const label = contentNode.querySelector('.style-lineage-section:first-child .style-lineage-label');
+        if (label) {
+          label.textContent = '这是什么';
+        }
+      }
+
+      async function loadStyleWithEnrichment(slug) {
+        const [worksPayload, stylesPayload] = await Promise.all([
+          loadJson('/api/works'),
+          loadJson('/api/styles')
+        ]);
+
+        state.works = worksPayload.items ?? [];
+        state.styles = stylesPayload.items ?? [];
+        state.activeSlug = slug;
+        state.activeWorkId = '';
+
+        renderStats(state.works, state.styles);
+        renderStyleList(state.styles, state.activeSlug);
+        syncHomeLink();
+        window.history.replaceState({}, '', '/museum/styles/' + encodeURIComponent(slug));
+
+        const detailPayload = await loadJson('/api/styles/' + encodeURIComponent(slug) + '?skipEnrichment=true');
+        const detail = detailPayload.item;
+
+        if (detail.needsEnrichment) {
+          renderStyleDetail(detail, state.styles, true);
+
+          try {
+            const enrichedPayload = await requestJson('/api/styles/' + encodeURIComponent(slug) + '/enrich', {
+              method: 'POST'
+            });
+            updateNarrativeContent(enrichedPayload.item.narrative);
+            setFlash('success', 'Style 已更新，释义已通过大模型重新生成。');
+          } catch {
+            updateNarrativeContent(detail.narrative);
+            setFlash('error', '释义更新失败，将保留当前内容。');
+          }
+        } else {
+          renderStyleDetail(detail, state.styles, false);
+        }
       }
 
       function bindStyleAdmin(detail) {
@@ -2065,12 +2217,12 @@ export function renderMuseumPage() {
                 })
               });
               const nextSlug = payload.item?.slug || detail.slug;
-              setFlash('success', 'Style 已更新。');
-              state.adminPanelOpen = true;
-              await loadMuseumState(nextSlug, '', true);
+              state.adminPanelOpen = false;
+              clearFlash();
+              await loadStyleWithEnrichment(nextSlug);
             } catch (error) {
               setFlash('error', error instanceof Error ? error.message : 'style_update_failed');
-              state.adminPanelOpen = true;
+              state.adminPanelOpen = false;
               await loadMuseumState(detail.slug, '', false);
             }
           });
@@ -2128,6 +2280,27 @@ export function renderMuseumPage() {
             } catch (error) {
               setFlash('error', error instanceof Error ? error.message : 'style_merge_failed');
               state.adminPanelOpen = true;
+              await loadMuseumState(detail.slug, '', false);
+            }
+          });
+        }
+
+        const deleteTrigger = document.getElementById('style-delete-trigger');
+        if (deleteTrigger) {
+          deleteTrigger.addEventListener('click', async () => {
+            if (!window.confirm('确认删除风格 "' + detail.name + '" 吗？这个操作会移除风格本身、所有别名以及作品与风格之间的映射关系。作品不会被删除，但会失去该风格标签。')) {
+              return;
+            }
+
+            try {
+              await requestJson('/api/styles/' + encodeURIComponent(detail.slug), {
+                method: 'DELETE'
+              });
+              setFlash('success', '风格已删除。');
+              state.adminPanelOpen = false;
+              await loadMuseumState('', '', true);
+            } catch (error) {
+              setFlash('error', error instanceof Error ? error.message : 'style_delete_failed');
               await loadMuseumState(detail.slug, '', false);
             }
           });

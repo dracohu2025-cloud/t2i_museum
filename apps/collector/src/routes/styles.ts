@@ -32,6 +32,8 @@ export async function registerStylesRoute(app: FastifyInstance) {
 
   app.get('/api/styles/:slug', async (request, reply) => {
     const params = request.params as { slug: string };
+    const query = request.query as { skipEnrichment?: string };
+    const skipEnrichment = query.skipEnrichment === 'true';
     const repository = new StyleRepository(app.collectorDb);
     const style = repository.getStyleBySlug(params.slug);
 
@@ -41,7 +43,7 @@ export async function registerStylesRoute(app: FastifyInstance) {
       });
     }
 
-    if (needsStyleEnrichment(style)) {
+    if (!skipEnrichment && needsStyleEnrichment(style)) {
       const curated = getCuratedStyleNarrative(style.name);
       if (curated) {
         repository.updateStyle(style.id, {
@@ -60,7 +62,7 @@ export async function registerStylesRoute(app: FastifyInstance) {
     }
 
     return {
-      item: getStyleDetail(app.collectorDb, params.slug, app.collectorConfig.dataDir)
+      item: getStyleDetail(app.collectorDb, latest?.slug ?? params.slug, app.collectorConfig.dataDir)
     };
   });
 
@@ -84,6 +86,19 @@ export async function registerStylesRoute(app: FastifyInstance) {
     }
 
     try {
+      const nameChanged = body.name !== undefined && body.name !== style.name;
+      if (nameChanged) {
+        if (body.shortDescription !== undefined && body.shortDescription === style.shortDescription) {
+          body.shortDescription = '';
+        }
+        if (body.visualTraits !== undefined && body.visualTraits === style.visualTraits) {
+          body.visualTraits = '';
+        }
+        if (body.promptHints !== undefined && body.promptHints === style.promptHints) {
+          body.promptHints = '';
+        }
+      }
+
       const updated = repository.updateStyle(style.id, body);
       if (!updated) {
         return reply.code(404).send({
@@ -185,5 +200,73 @@ export async function registerStylesRoute(app: FastifyInstance) {
 
       throw error;
     }
+  });
+
+  app.post('/api/styles/:slug/enrich', async (request, reply) => {
+    const params = request.params as { slug: string };
+    const repository = new StyleRepository(app.collectorDb);
+    const style = repository.getStyleBySlug(params.slug);
+
+    if (!style) {
+      return reply.code(404).send({
+        error: 'style_not_found'
+      });
+    }
+
+    if (!needsStyleEnrichment(style)) {
+      return {
+        item: getStyleDetail(app.collectorDb, params.slug, app.collectorConfig.dataDir)
+      };
+    }
+
+    const curated = getCuratedStyleNarrative(style.name);
+    if (curated) {
+      repository.updateStyle(style.id, {
+        shortDescription: curated.overview,
+        visualTraits: style.visualTraits.trim() ? undefined : curated.characteristics,
+        promptHints: style.promptHints.trim() ? undefined : curated.lineage
+      });
+    } else {
+      await waitForDetailEnrichment(app, style.id);
+    }
+
+    const latest = repository.getStyleById(style.id);
+    if (latest && needsStyleEnrichment(latest)) {
+      app.styleEnrichmentQueue?.enqueueStyleIds([style.id]);
+    }
+
+    return {
+      item: getStyleDetail(
+        app.collectorDb,
+        latest?.slug ?? params.slug,
+        app.collectorConfig.dataDir
+      )
+    };
+  });
+
+  app.delete('/api/styles/:slug', async (request, reply) => {
+    const params = request.params as { slug: string };
+    const repository = new StyleRepository(app.collectorDb);
+    const style = repository.getStyleBySlug(params.slug);
+
+    if (!style) {
+      return reply.code(404).send({
+        error: 'style_not_found'
+      });
+    }
+
+    const deleted = repository.deleteStyle(style.id);
+    if (!deleted) {
+      return reply.code(404).send({
+        error: 'style_not_found'
+      });
+    }
+
+    return {
+      deleted: {
+        slug: deleted.slug,
+        name: deleted.name
+      }
+    };
   });
 }

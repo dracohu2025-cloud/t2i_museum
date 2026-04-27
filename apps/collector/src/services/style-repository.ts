@@ -298,6 +298,24 @@ export class StyleRepository {
     return this.getStyleById(targetStyleId);
   }
 
+  deleteStyle(styleId: number): { slug: string; name: string } | undefined {
+    const style = this.getStyleById(styleId);
+    if (!style) {
+      return undefined;
+    }
+
+    const deleted = { slug: style.slug, name: style.name };
+
+    const remove = this.db.transaction(() => {
+      this.db.prepare('DELETE FROM work_styles WHERE style_id = ?').run(styleId);
+      this.db.prepare('DELETE FROM style_aliases WHERE style_id = ?').run(styleId);
+      this.db.prepare('DELETE FROM styles WHERE id = ?').run(styleId);
+    });
+
+    remove();
+    return deleted;
+  }
+
   getStyleById(styleId: number): EditableStyleRecord | undefined {
     return this.db
       .prepare(
