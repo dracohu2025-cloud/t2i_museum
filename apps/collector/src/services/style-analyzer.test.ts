@@ -12,8 +12,7 @@ describe('OpenAIStyleAnalyzer', () => {
       const body = JSON.parse(String(init?.body));
 
       expect(body.model).toBe('deepseek/deepseek-v4-flash');
-      expect(body.reasoning).toEqual({ effort: 'minimal', exclude: true });
-      expect(body.max_tokens).toBe(250);
+      expect(body.max_tokens).toBe(600);
       expect(body.temperature).toBe(0);
       expect(body.tools).toBeUndefined();
       expect(body.tool_choice).toBeUndefined();
@@ -202,7 +201,6 @@ describe('OpenAIStyleAnalyzer', () => {
         const body = JSON.parse(String(init?.body));
 
         expect(body.model).toBe('xiaomi/mimo-v2.5');
-        expect(body.reasoning).toEqual({ effort: 'minimal', exclude: true });
 
         return new Response(
           JSON.stringify({

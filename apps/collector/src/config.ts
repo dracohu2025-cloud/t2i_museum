@@ -62,7 +62,7 @@ export function resolveConfig(overrides: Partial<CollectorConfig> = {}): Collect
       firstNonEmpty(overrides.openAiFallbackModel, process.env.OPENAI_FALLBACK_MODEL) ??
       defaultFallbackModel,
     openAiBaseUrl,
-    openAiTimeoutMs: overrides.openAiTimeoutMs ?? Number(process.env.OPENAI_TIMEOUT_MS ?? 15000),
+    openAiTimeoutMs: overrides.openAiTimeoutMs ?? Number(process.env.OPENAI_TIMEOUT_MS ?? 30000),
     stylePromptVersion:
       firstNonEmpty(overrides.stylePromptVersion, process.env.STYLE_PROMPT_VERSION) ?? 'v1',
     cosSecretId:

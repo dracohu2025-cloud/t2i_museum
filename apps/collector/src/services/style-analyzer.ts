@@ -135,6 +135,42 @@ const styleExtractionTool = {
   }
 } as const;
 
+const validTermTypes = [
+  'artist_style',
+  'movement_style',
+  'aesthetic_style',
+  'medium_rendering',
+  'quality_modifier',
+  'subject_content',
+  'mood_atmosphere'
+] as const;
+
+const llmTermTypeMapping: Record<string, string> = {
+  artist: 'artist_style',
+  movement: 'movement_style',
+  aesthetic: 'aesthetic_style',
+  medium: 'medium_rendering',
+  rendering: 'medium_rendering',
+  quality: 'quality_modifier',
+  modifier: 'quality_modifier',
+  subject: 'subject_content',
+  content: 'subject_content',
+  mood: 'mood_atmosphere',
+  atmosphere: 'mood_atmosphere',
+  style: 'aesthetic_style',
+  art_style: 'aesthetic_style',
+  visual_style: 'aesthetic_style'
+};
+
+function normalizeTermType(value: string): string {
+  const lower = value.trim().toLowerCase();
+  if (validTermTypes.includes(lower as (typeof validTermTypes)[number])) {
+    return lower;
+  }
+  const mapped = llmTermTypeMapping[lower];
+  return mapped ?? 'aesthetic_style';
+}
+
 const styleAnalyzerSystemPrompt = [
   'You analyze Chinese and English image prompts for a personal t2i museum.',
   'Only extract style-related terms.',
@@ -165,6 +201,7 @@ const styleAnalyzerJsonObjectPrompt = [
     2
   ),
   'The JSON object must be valid and parsable.',
+  `Valid termType values: ${validTermTypes.join(', ')}.`,
   'If no style term qualifies, return {"candidates":[]}.'
 ].join('\n\n');
 
@@ -181,6 +218,7 @@ const styleAnalyzerOpenRouterPrompt = [
   'GOOD examples: normalizedCandidate="动漫水彩", normalizedCandidate="超现实主义".',
   'If a candidate is only grammatical filler with no style meaning (e.g. "为视觉", "的风格"), set shouldBeStyleTag=false.',
   'If no style term qualifies, return {"candidates":[]}.',
+  `Valid termType values: ${validTermTypes.join(', ')}.`,
   'JSON shape:',
   JSON.stringify({
     candidates: [
@@ -262,11 +300,7 @@ function buildRequestBody(
 
   if (strategy === 'openrouter_json_prompt') {
     body.temperature = 0;
-    body.reasoning = {
-      effort: 'minimal',
-      exclude: true
-    };
-    body.max_tokens = 250;
+    body.max_tokens = 600;
     return body;
   }
 
@@ -350,6 +384,31 @@ function escapeControlCharactersInsideStrings(content: string): string {
   return result;
 }
 
+function normalizeCandidatesTermTypes(
+  result: Record<string, unknown>
+): Record<string, unknown> {
+  const candidates = result.candidates;
+  if (!Array.isArray(candidates)) {
+    return result;
+  }
+
+  return {
+    ...result,
+    candidates: candidates.map((candidate: unknown) => {
+      if (!candidate || typeof candidate !== 'object') {
+        return candidate;
+      }
+
+      const c = candidate as Record<string, unknown>;
+      if (typeof c.termType === 'string') {
+        c.termType = normalizeTermType(c.termType);
+      }
+
+      return c;
+    })
+  };
+}
+
 function parseJsonWithRecovery(content: string): StyleAnalysisResult {
   const trimmed = content.trim();
   const recoveryCandidates = [
@@ -370,7 +429,9 @@ function parseJsonWithRecovery(content: string): StyleAnalysisResult {
     }
 
     try {
-      return styleAnalysisResultSchema.parse(JSON.parse(candidate));
+      return styleAnalysisResultSchema.parse(
+        normalizeCandidatesTermTypes(JSON.parse(candidate))
+      );
     } catch (error) {
       lastError = error;
     }
@@ -701,8 +762,21 @@ function refineStyleAnalysisResult(result: StyleAnalysisResult): StyleAnalysisRe
       }
 
       seen.add(dedupeKey);
+      // When the LLM returns a normalizedCandidate that is a fundamentally
+      // different form (not just a suffix-stripped version of rawTerm, e.g.
+      // "日本动漫风格" → "Japanese anime style"), preserve the sanitized
+      // original rawTerm so downstream prompt-anchored filtering can match it
+      // against the source prompt.
+      const isTranslatedModelResult =
+        typeof candidate.rawTerm === 'string' &&
+        typeof candidate.normalizedCandidate === 'string' &&
+        rawCandidate.length > 0 &&
+        normalizedCandidate.length > 0 &&
+        rawCandidate !== normalizedCandidate &&
+        !rawCandidate.includes(normalizedCandidate) &&
+        !normalizedCandidate.includes(rawCandidate);
       candidates.push({
-        rawTerm: finalTerm,
+        rawTerm: isTranslatedModelResult ? (rawCandidate || finalTerm) : finalTerm,
         normalizedCandidate: finalTerm,
         termType: finalTermType,
         confidence: candidate.confidence,
@@ -730,29 +804,33 @@ function applyPromptAnchoredOverrides(
     return filterModelCandidatesByPrompt(result, promptRaw);
   }
 
-  if (
-    anchoredResult.candidates.some((candidate) =>
-      isDominantPromptCompositeStyle(candidate.normalizedCandidate || candidate.rawTerm)
-    )
-  ) {
-    return anchoredResult;
-  }
-
   const promptAnchored = filterModelCandidatesByPrompt(result, promptRaw);
-  if (promptAnchored.candidates.length === 0) {
-    return anchoredResult;
-  }
 
-  // Merge: use filtered model candidates as the authoritative base, then supplement with
-  // heuristic terms that the model missed entirely (not already covered in the model output).
-  // Use normalizeStyleTerm for dedup so suffix variants like '风格' don't create duplicates.
+  // When the prompt contains a dominant composite style (e.g. 日本动漫风格立绘),
+  // use the heuristic as the authoritative base and supplement with LLM terms that
+  // cover styles the heuristic regex can't detect (e.g. 赛博朋克, 莫比乌斯).
+  const isDominant = anchoredResult.candidates.some((candidate) =>
+    isDominantPromptCompositeStyle(candidate.normalizedCandidate || candidate.rawTerm)
+  );
+  const base = isDominant
+    ? anchoredResult.candidates
+    : promptAnchored.candidates.length > 0
+      ? promptAnchored.candidates
+      : anchoredResult.candidates;
+  const other = base === anchoredResult.candidates ? promptAnchored.candidates : anchoredResult.candidates;
+
   const seenNorms = new Set<string>(
-    promptAnchored.candidates.map((c) => normalizeStyleTerm(c.normalizedCandidate))
+    base.map((c) => normalizeStyleTerm(c.normalizedCandidate))
   );
-  const supplement = anchoredResult.candidates.filter(
-    (c) => !seenNorms.has(normalizeStyleTerm(c.normalizedCandidate))
-  );
-  return { candidates: [...promptAnchored.candidates, ...supplement] };
+  const supplement = other.filter((c) => {
+    const norm = normalizeStyleTerm(c.normalizedCandidate);
+    if (seenNorms.has(norm)) return false;
+    for (const baseNorm of seenNorms) {
+      if (baseNorm.includes(norm) || norm.includes(baseNorm)) return false;
+    }
+    return true;
+  });
+  return { candidates: [...base, ...supplement] };
 }
 
 
@@ -870,10 +948,9 @@ export class OpenAIStyleAnalyzer implements StyleAnalyzer {
 
   async analyzePrompt(input: { promptRaw: string }): Promise<StyleAnalysisResult> {
     try {
-      const result = applyPromptAnchoredOverrides(
-        refineStyleAnalysisResult(await this.requestAnalysis(this.options.model, input)),
-        input.promptRaw
-      );
+      const rawLlm = await this.requestAnalysis(this.options.model, input);
+      const refined = refineStyleAnalysisResult(rawLlm);
+      const result = applyPromptAnchoredOverrides(refined, input.promptRaw);
       if (result.candidates.length === 0) {
         const heuristicResult = extractHeuristicStyleCandidates(input.promptRaw);
         if (heuristicResult.candidates.length > 0) {

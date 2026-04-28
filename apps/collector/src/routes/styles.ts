@@ -48,7 +48,9 @@ export async function registerStylesRoute(app: FastifyInstance) {
 
     return {
       exists: Boolean(existingStyle),
-      styleName: existingStyle?.name ?? null
+      styleName: existingStyle?.name ?? null,
+      termType: existingStyle?.termType ?? null,
+      debug: 'v2'
     };
   });
 

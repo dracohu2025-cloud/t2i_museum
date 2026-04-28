@@ -1785,6 +1785,18 @@ export function renderMuseumPage() {
             input.addEventListener('input', () => {
               const index = Number(input.getAttribute('data-style-edit-name'));
               rows[index].name = input.value;
+
+              const trimmed = input.value.trim();
+              if (trimmed) {
+                const matched = state.styles.find((s) => s.name === trimmed);
+                if (matched && matched.termType && matched.termType !== rows[index].termType) {
+                  rows[index].termType = matched.termType;
+                  const typeSelect = overlay.querySelector(\`[data-style-edit-type="\${index}"]\`);
+                  if (typeSelect instanceof HTMLSelectElement) {
+                    typeSelect.value = matched.termType;
+                  }
+                }
+              }
             });
           });
 

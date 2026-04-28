@@ -246,11 +246,9 @@ runtimeApi?.onMessage?.addListener((message, _sender, sendResponse) => {
 
   if (messageType === COLLECT_PREVIEW_RUNTIME_MESSAGE) {
     const payload = (message as { payload?: unknown }).payload;
-    console.log('[t2i-bg] collect preview request received');
 
     void (async () => {
       try {
-        console.log('[t2i-bg] fetching', LOCAL_COLLECT_PREVIEW_API_URL);
         const response = await fetch(LOCAL_COLLECT_PREVIEW_API_URL, {
           method: 'POST',
           headers: {
@@ -260,7 +258,6 @@ runtimeApi?.onMessage?.addListener((message, _sender, sendResponse) => {
           signal: AbortSignal.timeout(30_000)
         });
         const data = await response.json();
-        console.log('[t2i-bg] preview response:', response.status, 'candidates:', data?.candidates?.length ?? 0);
 
         sendResponse({
           ok: response.ok,
@@ -277,7 +274,6 @@ runtimeApi?.onMessage?.addListener((message, _sender, sendResponse) => {
               : error instanceof Error
                 ? error.message
                 : '风格预分析失败';
-        console.error('[t2i-bg] preview fetch error:', message);
 
         sendResponse({
           ok: false,
@@ -304,10 +300,11 @@ runtimeApi?.onMessage?.addListener((message, _sender, sendResponse) => {
         const data = await response.json();
         sendResponse({
           exists: Boolean(data?.exists),
-          styleName: data?.styleName ?? null
+          styleName: data?.styleName ?? null,
+          termType: data?.termType ?? null
         });
       } catch {
-        sendResponse({ exists: false, styleName: null });
+        sendResponse({ exists: false, styleName: null, termType: null });
       }
     })();
     return true;

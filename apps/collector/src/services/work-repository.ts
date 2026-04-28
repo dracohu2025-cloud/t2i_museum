@@ -32,6 +32,7 @@ export interface WorkIngestSnapshot {
 export interface StyleRecord {
   id: number;
   name: string;
+  termType: string;
 }
 
 export interface DeleteWorkResult {
@@ -322,7 +323,7 @@ export class WorkRepository {
     return this.db
       .prepare(
         `
-          SELECT styles.id, styles.name
+          SELECT styles.id, styles.name, styles.term_type as termType
           FROM style_aliases
           INNER JOIN styles ON styles.id = style_aliases.style_id
           WHERE style_aliases.alias_norm = ?
@@ -336,7 +337,7 @@ export class WorkRepository {
     return this.db
       .prepare(
         `
-          SELECT id, name
+          SELECT id, name, term_type as termType
           FROM styles
           WHERE name = ?
           LIMIT 1
@@ -366,7 +367,8 @@ export class WorkRepository {
 
     return {
       id: Number(result.lastInsertRowid),
-      name: input.name
+      name: input.name,
+      termType: input.termType
     };
   }
 

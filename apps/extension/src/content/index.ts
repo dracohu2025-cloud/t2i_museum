@@ -224,19 +224,16 @@ async function previewCollectStyles(payload: CollectWorkPayload): Promise<StyleP
         const response = (rawResponse ?? {}) as StylePreviewRuntimeResponse;
         const lastError = chromeLike.runtime?.lastError;
         if (lastError?.message) {
-          console.error('[t2i] preview runtime error:', lastError.message);
           reject(new Error(mapRuntimeError(lastError.message)));
           return;
         }
 
         if (!response?.ok) {
           const message = response?.error ?? response.data?.error ?? response.data?.message ?? '风格预分析失败';
-          console.error('[t2i] preview response not ok:', message, 'status:', response?.status);
           reject(new Error(message));
           return;
         }
 
-        console.log('[t2i] preview response ok, candidates:', response.data?.candidates?.length ?? 0);
         resolve(response.data?.candidates ?? []);
       }
     );
@@ -297,19 +294,19 @@ function isolateReviewControl(element: HTMLElement) {
 
 const styleLookupTimers = new Map<number, number>();
 
-function lookupStyleTerm(term: string): Promise<{ exists: boolean; styleName: string | null }> {
+function lookupStyleTerm(term: string): Promise<{ exists: boolean; styleName: string | null; termType: string | null }> {
   if (!chromeLike?.runtime?.sendMessage) {
-    return Promise.resolve({ exists: false, styleName: null });
+    return Promise.resolve({ exists: false, styleName: null, termType: null });
   }
   return new Promise((resolve) => {
     chromeLike.runtime?.sendMessage?.(
       { type: LOOKUP_STYLE_RUNTIME_MESSAGE, term },
       (response) => {
         if (chromeLike.runtime?.lastError?.message) {
-          resolve({ exists: false, styleName: null });
+          resolve({ exists: false, styleName: null, termType: null });
           return;
         }
-        resolve((response ?? {}) as { exists: boolean; styleName: string | null });
+        resolve((response ?? {}) as { exists: boolean; styleName: string | null; termType: string | null });
       }
     );
   });
@@ -469,6 +466,12 @@ function openStyleReviewDialog(
     list.style.gap = '10px';
 
     const renderRows = () => {
+      // Clear all pending debounced style lookups from the previous render
+      // so stale callbacks don't target destroyed DOM nodes or shifted indices.
+      for (const timerId of styleLookupTimers.values()) {
+        window.clearTimeout(timerId);
+      }
+      styleLookupTimers.clear();
       list.innerHTML = '';
 
       if (rows.length === 0) {
@@ -507,6 +510,7 @@ function openStyleReviewDialog(
         label.style.letterSpacing = '0.12em';
 
         const input = frameDocument.createElement('input');
+        input.type = 'text';
         input.value = row.name;
         input.placeholder = '例如：动漫水彩 / 水墨 / Moebius';
         input.style.height = '42px';
@@ -543,7 +547,7 @@ function openStyleReviewDialog(
             window.clearTimeout(existingTimer);
           }
 
-          const timerId = window.setTimeout(async () => {
+          const timerId = window.setTimeout(() => {
             styleLookupTimers.delete(index);
             const trimmed = input.value.trim();
             if (!trimmed) {
@@ -552,9 +556,22 @@ function openStyleReviewDialog(
               return;
             }
 
-            const result = await lookupStyleTerm(trimmed);
-            rows[index] = { ...rows[index], existsInCatalog: result.exists };
-            meta.textContent = `原词：${trimmed}${result.exists ? ' · 词库已有' : ' · 新候选'}`;
+            lookupStyleTerm(trimmed)
+              .then((result) => {
+                rows[index] = { ...rows[index], existsInCatalog: result.exists };
+                meta.textContent = `原词：${trimmed}${result.exists ? ' · 词库已有' : ' · 新候选'}`;
+
+                if (result.exists && result.termType && result.termType !== rows[index].termType) {
+                  rows[index] = { ...rows[index], termType: result.termType as ApprovedStyleTag['termType'] };
+                  const typeSelect = list.querySelector(`[data-style-review-type="${index}"]`) as HTMLSelectElement | null;
+                  if (typeSelect) {
+                    typeSelect.value = result.termType;
+                  }
+                }
+              })
+              .catch(() => {
+                meta.textContent = `原词：${trimmed}`;
+              });
           }, 600);
 
           styleLookupTimers.set(index, timerId);
@@ -591,6 +608,7 @@ function openStyleReviewDialog(
         select.style.background = 'rgba(2, 6, 23, 0.72)';
         select.style.color = '#f8fafc';
         select.style.padding = '0 10px';
+        select.dataset.styleReviewType = String(index);
         isolateReviewControl(select);
         select.addEventListener('change', () => {
           rows[index] = {
@@ -848,15 +866,12 @@ function bootstrap() {
     onCollect: async () => {
       await waitForMainImage(document);
       const payload = extractJimengDetailPayload(document);
-      console.log('[t2i] payload extracted:', payload.sourceWorkId, 'prompt:', payload.promptRaw.slice(0, 80));
       let previewWarning = '';
       let candidates: StylePreviewCandidate[] = [];
       try {
         candidates = await previewCollectStyles(payload);
-        console.log('[t2i] preview candidates received:', candidates.length);
       } catch (error) {
         previewWarning = error instanceof Error ? error.message : '风格预分析失败';
-        console.warn('[t2i] preview failed:', previewWarning);
       }
       const approvedStyles = await openStyleReviewDialog(
         document,
