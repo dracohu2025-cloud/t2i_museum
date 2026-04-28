@@ -3,7 +3,9 @@ import type { FastifyInstance } from 'fastify';
 import { getStyleDetail, listStyles } from '../services/catalog-query';
 import { needsStyleEnrichment } from '../services/style-enrichment-queue';
 import { getCuratedStyleNarrative } from '../services/style-knowledge';
+import { normalizeStyleTerm } from '../services/style-normalizer';
 import { StyleConflictError, StyleRepository } from '../services/style-repository';
+import { WorkRepository } from '../services/work-repository';
 
 const detailEnrichmentWaitMs = 12_000;
 
@@ -29,6 +31,26 @@ export async function registerStylesRoute(app: FastifyInstance) {
   app.get('/api/styles', async () => ({
     items: listStyles(app.collectorDb, app.collectorConfig.dataDir)
   }));
+
+  app.get('/api/styles/lookup', async (request, reply) => {
+    const query = request.query as { term?: string };
+    const term = query.term?.trim();
+    if (!term) {
+      return reply.code(400).send({ error: 'term_required' });
+    }
+
+    const repository = new WorkRepository(app.collectorDb);
+    const aliasNorm = normalizeStyleTerm(term);
+
+    const existingStyle =
+      repository.findStyleByAliasNorm(aliasNorm) ??
+      repository.findStyleByName(term);
+
+    return {
+      exists: Boolean(existingStyle),
+      styleName: existingStyle?.name ?? null
+    };
+  });
 
   app.get('/api/styles/:slug', async (request, reply) => {
     const params = request.params as { slug: string };

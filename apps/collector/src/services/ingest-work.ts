@@ -26,6 +26,16 @@ export interface StartedIngestWork extends CreateWorkResult {
   run: () => Promise<void>;
 }
 
+type AnalysisOutcome =
+  | {
+      analysis: StyleAnalysisResult | null;
+      error?: never;
+    }
+  | {
+      analysis: null;
+      error: unknown;
+    };
+
 export function startIngestWork(input: IngestWorkInput): StartedIngestWork {
   const created = input.repository.createPendingWork(input.payload);
 
@@ -89,17 +99,37 @@ async function continueIngestWork(input: IngestWorkInput, created: CreateWorkRes
         })()
       : Promise.resolve(null);
 
-    const analysisPromise = shouldAnalyze
+    const analysisPromise: Promise<AnalysisOutcome> = shouldAnalyze
       ? (async () => {
           input.repository.markIngestStage(created.workId, 'analyzing');
-          const analysis = hasApprovedStyles
-            ? { candidates: approvedStyles.map(styleTagToCandidate) }
-            : await input.styleAnalyzer!.analyzePrompt({
-                promptRaw: input.payload.promptRaw
-              });
-          return analysis;
+          try {
+            const analysis = hasApprovedStyles
+              ? { candidates: approvedStyles.map(styleTagToCandidate) }
+              : await input.styleAnalyzer!.analyzePrompt({
+                  promptRaw: input.payload.promptRaw
+                });
+            return {
+              analysis
+            };
+          } catch (error) {
+            const message = error instanceof Error ? error.message : 'unknown analysis error';
+            input.repository.recordAnalysisRun({
+              workId: created.workId,
+              provider: 'unknown',
+              model: 'unknown',
+              promptVersion: 'unknown',
+              rawResponse: '',
+              parsedResult: { candidates: [] },
+              status: 'failed',
+              errorMessage: message
+            });
+            return {
+              analysis: null,
+              error
+            };
+          }
         })()
-      : Promise.resolve<StyleAnalysisResult | null>(null);
+      : Promise.resolve({ analysis: null });
 
     // Phase 2: Wait for image download, then start COS upload in parallel with ongoing LLM.
     const cachedImage = await cachePromise;
@@ -133,7 +163,11 @@ async function continueIngestWork(input: IngestWorkInput, created: CreateWorkRes
       : Promise.resolve();
 
     // Phase 3: Wait for LLM analysis and COS upload (both in parallel).
-    const [analysis] = await Promise.all([analysisPromise, uploadPromise]);
+    const [analysisOutcome] = await Promise.all([analysisPromise, uploadPromise]);
+    if (analysisOutcome.error) {
+      throw analysisOutcome.error;
+    }
+    const { analysis } = analysisOutcome;
 
     // Phase 4: Apply analysis results.
     if (analysis) {

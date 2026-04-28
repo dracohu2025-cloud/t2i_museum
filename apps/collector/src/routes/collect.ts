@@ -58,15 +58,18 @@ export async function registerCollectRoute(app: FastifyInstance) {
   app.post('/api/collect/preview', async (request, reply) => {
     const payload = collectWorkPayloadSchema.parse(request.body);
     if (!app.styleAnalyzer) {
+      request.log.warn('style analyzer unavailable');
       return reply.code(503).send({
         error: 'style_analyzer_unavailable'
       });
     }
 
     const repository = new WorkRepository(app.collectorDb);
+    request.log.info({ promptLen: payload.promptRaw.length }, 'preview: analyzing prompt');
     const analysis = await app.styleAnalyzer.analyzePrompt({
       promptRaw: payload.promptRaw
     });
+    request.log.info({ totalCandidates: analysis.candidates.length, styleTags: analysis.candidates.filter(c => c.shouldBeStyleTag).length }, 'preview: analysis done');
 
     return {
       sourceWorkId: payload.sourceWorkId,

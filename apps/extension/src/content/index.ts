@@ -12,6 +12,7 @@ import {
   COLLECT_PREVIEW_RUNTIME_MESSAGE,
   COLLECT_RUNTIME_MESSAGE,
   JIMENG_DETAIL_PATH_SEGMENT,
+  LOOKUP_STYLE_RUNTIME_MESSAGE,
   LOOKUP_WORK_PROGRESS_RUNTIME_MESSAGE,
   SYNC_JIMENG_ROUTE_RUNTIME_MESSAGE
 } from '../shared/constants';
@@ -78,6 +79,7 @@ interface StylePreviewCandidate {
 
 interface StylePreviewRuntimeResponse {
   ok?: boolean;
+  status?: number;
   error?: string;
   data?: {
     candidates?: StylePreviewCandidate[];
@@ -222,16 +224,19 @@ async function previewCollectStyles(payload: CollectWorkPayload): Promise<StyleP
         const response = (rawResponse ?? {}) as StylePreviewRuntimeResponse;
         const lastError = chromeLike.runtime?.lastError;
         if (lastError?.message) {
+          console.error('[t2i] preview runtime error:', lastError.message);
           reject(new Error(mapRuntimeError(lastError.message)));
           return;
         }
 
         if (!response?.ok) {
           const message = response?.error ?? response.data?.error ?? response.data?.message ?? '风格预分析失败';
+          console.error('[t2i] preview response not ok:', message, 'status:', response?.status);
           reject(new Error(message));
           return;
         }
 
+        console.log('[t2i] preview response ok, candidates:', response.data?.candidates?.length ?? 0);
         resolve(response.data?.candidates ?? []);
       }
     );
@@ -288,6 +293,26 @@ function isolateReviewControl(element: HTMLElement) {
   for (const eventType of reviewControlEventTypes) {
     element.addEventListener(eventType, (event) => event.stopPropagation());
   }
+}
+
+const styleLookupTimers = new Map<number, number>();
+
+function lookupStyleTerm(term: string): Promise<{ exists: boolean; styleName: string | null }> {
+  if (!chromeLike?.runtime?.sendMessage) {
+    return Promise.resolve({ exists: false, styleName: null });
+  }
+  return new Promise((resolve) => {
+    chromeLike.runtime?.sendMessage?.(
+      { type: LOOKUP_STYLE_RUNTIME_MESSAGE, term },
+      (response) => {
+        if (chromeLike.runtime?.lastError?.message) {
+          resolve({ exists: false, styleName: null });
+          return;
+        }
+        resolve((response ?? {}) as { exists: boolean; styleName: string | null });
+      }
+    );
+  });
 }
 
 function openStyleReviewDialog(
@@ -510,6 +535,29 @@ function openStyleReviewDialog(
             ...rows[index],
             name: input.value
           };
+
+          // Debounced style catalog lookup:
+          // when user finishes typing, check if the term already exists in the catalog.
+          const existingTimer = styleLookupTimers.get(index);
+          if (existingTimer !== undefined) {
+            window.clearTimeout(existingTimer);
+          }
+
+          const timerId = window.setTimeout(async () => {
+            styleLookupTimers.delete(index);
+            const trimmed = input.value.trim();
+            if (!trimmed) {
+              rows[index] = { ...rows[index], existsInCatalog: false };
+              meta.textContent = '输入关键词...';
+              return;
+            }
+
+            const result = await lookupStyleTerm(trimmed);
+            rows[index] = { ...rows[index], existsInCatalog: result.exists };
+            meta.textContent = `原词：${trimmed}${result.exists ? ' · 词库已有' : ' · 新候选'}`;
+          }, 600);
+
+          styleLookupTimers.set(index, timerId);
         });
 
         const meta = frameDocument.createElement('div');
@@ -800,12 +848,15 @@ function bootstrap() {
     onCollect: async () => {
       await waitForMainImage(document);
       const payload = extractJimengDetailPayload(document);
+      console.log('[t2i] payload extracted:', payload.sourceWorkId, 'prompt:', payload.promptRaw.slice(0, 80));
       let previewWarning = '';
       let candidates: StylePreviewCandidate[] = [];
       try {
         candidates = await previewCollectStyles(payload);
+        console.log('[t2i] preview candidates received:', candidates.length);
       } catch (error) {
         previewWarning = error instanceof Error ? error.message : '风格预分析失败';
+        console.warn('[t2i] preview failed:', previewWarning);
       }
       const approvedStyles = await openStyleReviewDialog(
         document,
@@ -1069,8 +1120,16 @@ function bootstrap() {
 }
 
 if (runtimeGlobal.__t2iMuseumContentSync) {
-  runtimeGlobal.__t2iMuseumContentSync();
-} else {
+  try {
+    runtimeGlobal.__t2iMuseumContentSync();
+  } catch {
+    // Previous instance's context was invalidated (e.g. by scripting.executeScript).
+    // Clean up dead references and fall through to bootstrap fresh.
+    delete runtimeGlobal.__t2iMuseumContentSync;
+    delete runtimeGlobal.__t2iMuseumContentCleanup;
+  }
+}
+if (!runtimeGlobal.__t2iMuseumContentSync) {
   runtimeGlobal.__t2iMuseumContentCleanup?.();
   runtimeGlobal.__t2iMuseumContentCleanup = cleanupCurrentInstance;
   runtimeGlobal.__t2iMuseumContentSync = syncCurrentInstance;

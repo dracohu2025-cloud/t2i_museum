@@ -14,6 +14,40 @@ export interface ResolvedCanonicalStyle {
   shortDescription: string;
 }
 
+/**
+ * Heuristic patterns for inferring the correct StyleTermType from a style term.
+ * Each entry defines a regex pattern and maps matching terms to a term type.
+ * Patterns are checked in order after canonical rule lookup, so the first match wins.
+ */
+interface TermTypePattern {
+  pattern: RegExp;
+  termType: StyleTermType;
+  description: string;
+}
+
+const termTypePatterns: TermTypePattern[] = [
+  // Artist names (individual or compound)
+  { pattern: /^(?:莫奈|梵高|毕加索|达芬奇|拉斐尔|伦勃朗|米开朗基罗|丢勒|透纳|马蒂斯|塞尚|高更|雷诺阿|德加|蒙克|克里姆特|席勒|康定斯基|蒙德里安|达利|米罗|安迪沃霍尔|波洛克|沃霍尔|霍珀|弗里达|阿钦博尔多|东山魁夷|宫崎骏|新海誠|新海诚|葛饰北斋|葛飾北斎|歌川国芳|歌川廣重|歌川广重|喜多川歌麿|铃木春信|穆夏|慕夏|Moebius|Monet|Van Gogh|Picasso|Da Vinci|Rembrandt|Matisse|Cezanne|Gauguin|Degas|Munch|Klimt|Kandinsky|Mondrian|Dali|Warhol|Durer|Hokusai|Hiroshige|Utamaro|Mucha|Gustav Klimt)/iu, termType: 'artist_style', description: 'artist_name' },
+
+  // Medium and rendering techniques
+  { pattern: /(?:水彩|油画|水墨|水粉|丙烯|版画|素描|彩铅|马克笔|工笔|写意|油画棒|蜡笔|铅笔|钢笔|喷枪|水彩画|油彩|墨彩|国画|书法|壁画|漆画|岩彩|坦培拉|色粉|粉彩|粉画|拼贴|数码绘画|数字绘画|CG绘画|板绘|厚涂|赛璐璐|平涂|网点|漫符|勾线|描边|漫画|插画|3D|三维|渲染|建模|材质|光照|光影|写实|超写实|半写实|卡通渲染|三渲二|toon|cel shading|render)/iu, termType: 'medium_rendering', description: 'medium_rendering' },
+
+  // Art movements and schools
+  { pattern: /(?:主义|流派|印象派|后印象派|立体派|抽象派|野兽派|表现主义|超现实|未来主义|至上主义|构成主义|风格派|达达|波普|极简|极繁|巴洛克|洛可可|新艺术|装饰艺术|包豪斯|文艺复兴|古典主义|浪漫主义|写实主义|自然主义|象征主义|点彩|分色|分离派|De Stijl|Art Deco|Art Nouveau|Bauhaus|Renaissance|Baroque|Rococo|Impressionist|Expressionist|Surrealist|Pop Art|Minimalist)/iu, termType: 'movement_style', description: 'movement_style' },
+
+  // Aesthetic styles (cultural, genre, visual styles)
+  { pattern: /(?:国风|古风|中式|中国风|日式|和风|日系|韩式|韩风|欧美|美式|法式|北欧|森系|民族风|波西米亚|赛博朋克|蒸汽朋克|生物朋克|柴油朋克|废土|末世|末世废土|宫崎骏风|吉卜力|迪士尼|皮克斯|梦工厂|东方|西方|幻想|奇幻|魔幻|仙侠|武侠|水墨风|卡通|二次元|动漫|番剧|轻小说|galgame|乙女|少年漫|少女漫|Q版|萌系|可爱风|治愈系|暗黑风|暗黑|哥特|复古|怀旧|做旧|年代|昭和|平成|大正|昭和风|港风|民国|蒸汽波|Vaporwave|Synthwave|极简风|简约风|高级感|ins风|简约|北欧风|侘寂|wabi-sabi|波普风|涂鸦|街头|嘻哈|潮流|时尚|杂志|商业|广告|宣传|海报|扁平|UI|图标|拟物|material|玻璃拟态|毛玻璃)/iu, termType: 'aesthetic_style', description: 'aesthetic_style' },
+
+  // Mood and atmosphere
+  { pattern: /(?:氛围|情绪|气氛|意境|氛围感|唯美|治愈|梦幻|梦境|童话|浪漫|温馨|温暖|柔和|温柔|静谧|宁静|安详|空灵|通透|清冷|冷峻|阴郁|忧郁|压抑|沉重|神秘|诡异|诡异|诡异|恐怖|惊悚|黑暗|暗黑|阴沉|明亮|明媚|灿烂|热烈|活泼|轻快|愉悦|清新|清爽|淡雅|素雅|素净|纯净|纯洁|神圣|庄重|肃穆|悲壮|苍凉|苍茫|辽阔|壮阔|宏大|史诗|震撼|华丽|绚丽|斑斓|多彩|缤纷|极光|黄昏|夕阳|黎明|清晨|夜晚|夜景|月色|星空|星光|星夜|极夜)/iu, termType: 'mood_atmosphere', description: 'mood_atmosphere' },
+
+  // Quality modifiers
+  { pattern: /^(?:高画质|超清|高清|4k|8k|高清|精细|精致|细腻|逼真|真实|写实|超写实|高清渲染|高精度|高细节|高品质|顶级|杰作|大师级|专业|八星|最佳质量|最高画质|极佳|极致|巅峰|完美|无瑕|best quality|masterpiece|highres|ultra high res|high quality|professional|photorealistic|realistic)/iu, termType: 'quality_modifier', description: 'quality_modifier' },
+
+  // Subject content (fallback - catch generic subjects)
+  { pattern: /^(?:风景|山水|人物|肖像|人体|半身|全身|头像|胸像|动物|植物|花卉|食物|建筑|城市|街道|室内|静物|抽象|图案|纹理|材质|岩石|水景|瀑布|河流|湖泊|海洋|天空|云彩|火焰|闪电|龙|骑士|精灵|天使|恶魔|机甲|机器人|武器|剑|盾|魔法|法术|咒语)/iu, termType: 'subject_content', description: 'subject_content' },
+];
+
 export const canonicalStyleRules: CanonicalStyleRule[] = [
   {
     canonicalName: 'Moebius (Jean Giraud)',
@@ -85,6 +119,72 @@ export const canonicalStyleRules: CanonicalStyleRule[] = [
     aliases: ['水墨', '水墨风', '水墨风格', 'ink wash', 'Chinese ink wash'],
     termType: 'medium_rendering',
     shortDescription: '以墨色浓淡、留白、线面关系和东方笔墨气韵为核心的绘画风格。'
+  },
+  {
+    canonicalName: '日本动漫',
+    aliases: ['日本动漫', 'Japanese anime', 'anime', '日式动漫', '日本动画', 'anime风格'],
+    termType: 'aesthetic_style',
+    shortDescription: '以日本动画为美学基础的视觉风格，包含平涂色彩、夸张表情与流畅动势。'
+  },
+  {
+    canonicalName: '动漫水彩',
+    aliases: ['动漫水彩', 'anime watercolor', 'anime watercolour', '动漫水彩风', '动漫水彩风格'],
+    termType: 'medium_rendering',
+    shortDescription: '融合日式动漫线稿与水彩渲染技巧的绘画风格。'
+  },
+  {
+    canonicalName: 'BJD',
+    aliases: ['BJD', 'Ball-jointed doll', 'ball jointed doll', '球形关节人偶', '球关节人偶', 'BJD风格'],
+    termType: 'aesthetic_style',
+    shortDescription: '以球形关节人偶为美学参照的视觉风格，常见于角色造型。'
+  },
+  {
+    canonicalName: '立绘',
+    aliases: ['立绘', 'character illustration', 'full-body character portrait', '立绘风格'],
+    termType: 'aesthetic_style',
+    shortDescription: '角色全身站立插画的表现形式，源自日式游戏与ACG文化。'
+  },
+  {
+    canonicalName: '动态光影',
+    aliases: ['动态的光影效果', 'dynamic lighting', '动态光影', '动态光影效果'],
+    termType: 'mood_atmosphere',
+    shortDescription: '强调动态变化的光影效果，营造沉浸式视觉氛围。'
+  },
+  {
+    canonicalName: '森林童话',
+    aliases: ['forest fairy-tale', 'forest fairy tale', '森林童话风', '森林童话'],
+    termType: 'aesthetic_style',
+    shortDescription: '以森林自然和童话意境为特征的审美风格。'
+  },
+  {
+    canonicalName: '印象派',
+    aliases: ['印象派', '印象主义', 'Impressionism', 'impressionist', '印象派风格'],
+    termType: 'movement_style',
+    shortDescription: '以光线变化和色彩感觉为核心的艺术流派，笔触松散而富有生气。'
+  },
+  {
+    canonicalName: '浮世绘',
+    aliases: ['浮世绘', '浮世绘风格', 'Ukiyo-e', 'ukiyo-e style'],
+    termType: 'movement_style',
+    shortDescription: '日本江户时代的版画艺术形式，以平面构图、鲜明色彩和装饰性线条为特征。'
+  },
+  {
+    canonicalName: '赛博朋克',
+    aliases: ['赛博朋克', '赛博', 'cyberpunk', 'Cyberpunk', '赛博朋克风'],
+    termType: 'aesthetic_style',
+    shortDescription: '以高科技、低生活为核心的反乌托邦科幻视觉风格。'
+  },
+  {
+    canonicalName: '宫崎骏',
+    aliases: ['宫崎骏', '宫崎骏风格', '宫崎骏风', '宫崎骏画风'],
+    termType: 'artist_style',
+    shortDescription: '日本动画大师宫崎骏的创作风格，以宏大飞行场景、自然生态与少女主角为标志。'
+  },
+  {
+    canonicalName: '新海诚',
+    aliases: ['新海诚', '新海誠', '新海诚风格', '新海诚画风', 'Makoto Shinkai'],
+    termType: 'artist_style',
+    shortDescription: '日本动画导演新海诚的视觉风格，以超写实背景、光影散射与情感氛围著称。'
   }
 ];
 
@@ -154,6 +254,32 @@ export function createStyleSlug(name: string): string {
   return base || 'style';
 }
 
+/**
+ * Resolve the most appropriate StyleTermType for a given term using:
+ * 1. Canonical style rules (exact alias matches)
+ * 2. Heuristic pattern matching (regex patterns for artists, media, movements, etc.)
+ * Falls back to the original LLM-provided type.
+ */
+export function resolveTermType(term: string, originalType: StyleTermType): StyleTermType {
+  const normalized = normalizeStyleTerm(term);
+  if (!normalized) return originalType;
+
+  // 1. Check canonical style rules
+  const canonical = findCanonicalStyleRule(term);
+  if (canonical) return canonical.termType;
+
+  // 2. Check heuristic patterns
+  for (const pattern of termTypePatterns) {
+    // Test against the original term (preserves case and formatting)
+    if (pattern.pattern.test(term)) {
+      return pattern.termType;
+    }
+  }
+
+  // 3. Fall back to original type
+  return originalType;
+}
+
 function findCanonicalStyleRule(term: string): CanonicalStyleRule | undefined {
   const normalized = normalizeStyleTerm(term);
 
@@ -210,11 +336,12 @@ export function resolveCanonicalStyle(input: {
   }
 
   const chosenName = chooseDisplayName(input.rawTerm, input.normalizedCandidate);
+  const resolvedType = resolveTermType(chosenName, input.termType);
 
   return {
     name: chosenName,
     aliases: Array.from(new Set([input.rawTerm, input.normalizedCandidate, chosenName])).filter(Boolean),
-    termType: input.termType,
+    termType: resolvedType,
     shortDescription: input.shortExplanation
   };
 }

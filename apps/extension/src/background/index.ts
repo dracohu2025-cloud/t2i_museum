@@ -4,7 +4,9 @@ import {
   JIMENG_AI_TOOL_URL_PREFIX,
   LOCAL_COLLECT_API_URL,
   LOCAL_COLLECT_PREVIEW_API_URL,
+  LOCAL_STYLES_LOOKUP_API_URL,
   LOCAL_WORKS_API_URL,
+  LOOKUP_STYLE_RUNTIME_MESSAGE,
   LOOKUP_WORK_PROGRESS_RUNTIME_MESSAGE,
   SYNC_JIMENG_ROUTE_RUNTIME_MESSAGE
 } from '../shared/constants';
@@ -117,6 +119,10 @@ async function ensureJimengContentScript(tabId: number, url = '') {
       target: { tabId },
       files: ['content/index.global.js']
     });
+    // Give the content script a short moment to bootstrap before
+    // sending the sync message, in case the previous execution context
+    // was invalidated and a fresh bootstrap is needed.
+    await new Promise((r) => setTimeout(r, 100));
     await tabsApi?.sendMessage?.(tabId, {
       type: SYNC_JIMENG_ROUTE_RUNTIME_MESSAGE
     });
@@ -240,9 +246,11 @@ runtimeApi?.onMessage?.addListener((message, _sender, sendResponse) => {
 
   if (messageType === COLLECT_PREVIEW_RUNTIME_MESSAGE) {
     const payload = (message as { payload?: unknown }).payload;
+    console.log('[t2i-bg] collect preview request received');
 
     void (async () => {
       try {
+        console.log('[t2i-bg] fetching', LOCAL_COLLECT_PREVIEW_API_URL);
         const response = await fetch(LOCAL_COLLECT_PREVIEW_API_URL, {
           method: 'POST',
           headers: {
@@ -252,6 +260,7 @@ runtimeApi?.onMessage?.addListener((message, _sender, sendResponse) => {
           signal: AbortSignal.timeout(30_000)
         });
         const data = await response.json();
+        console.log('[t2i-bg] preview response:', response.status, 'candidates:', data?.candidates?.length ?? 0);
 
         sendResponse({
           ok: response.ok,
@@ -268,11 +277,37 @@ runtimeApi?.onMessage?.addListener((message, _sender, sendResponse) => {
               : error instanceof Error
                 ? error.message
                 : '风格预分析失败';
+        console.error('[t2i-bg] preview fetch error:', message);
 
         sendResponse({
           ok: false,
           error: message
         });
+      }
+    })();
+    return true;
+  }
+
+  if (messageType === LOOKUP_STYLE_RUNTIME_MESSAGE) {
+    const term = (message as { term?: string }).term ?? '';
+    if (!term.trim()) {
+      sendResponse({ exists: false, styleName: null });
+      return true;
+    }
+
+    void (async () => {
+      try {
+        const response = await fetch(
+          `${LOCAL_STYLES_LOOKUP_API_URL}?term=${encodeURIComponent(term)}`,
+          { signal: AbortSignal.timeout(5_000) }
+        );
+        const data = await response.json();
+        sendResponse({
+          exists: Boolean(data?.exists),
+          styleName: data?.styleName ?? null
+        });
+      } catch {
+        sendResponse({ exists: false, styleName: null });
       }
     })();
     return true;
