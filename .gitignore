@@ -8,3 +8,5 @@ coverage
 tmp
 *.tsbuildinfo
 .opencode
+.claude
+.playwright-mcp
