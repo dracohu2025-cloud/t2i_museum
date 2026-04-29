@@ -260,6 +260,8 @@ export function hasLoadedJimengDetailImage(root: Document) {
       Boolean(source) &&
       isVisibleImage(root, image) &&
       isViewportIntersecting(root, image) &&
+      image.naturalWidth > 0 &&
+      image.naturalHeight > 0 &&
       (metrics.width >= 300 || !isLikelyThumbnail(source)) &&
       (metrics.height >= 300 || !isLikelyThumbnail(source))
     );
@@ -287,7 +289,11 @@ function findPrimaryImageSource(root: Document, expectedAspectRatio?: string): s
       });
 
   const chooseWinner = (nextCandidates: ReturnType<typeof buildCandidates>) => {
-    let candidates = nextCandidates;
+    let candidates = nextCandidates.filter((c) => c.isLoaded);
+    if (candidates.length === 0) {
+      candidates = nextCandidates;
+    }
+
     if (expectedRatio) {
       const ratioMatched = candidates.filter((c) => isAspectRatioMatch(c.metrics.ratio, expectedRatio));
       if (ratioMatched.length > 0) {
@@ -295,7 +301,26 @@ function findPrimaryImageSource(root: Document, expectedAspectRatio?: string): s
       }
     }
 
-    return candidates.sort((left, right) => right.metrics.area - left.metrics.area)[0];
+    if (candidates.length > 1) {
+      const viewportWidth = root.defaultView?.innerWidth ?? root.documentElement.clientWidth;
+      const viewportHeight = root.defaultView?.innerHeight ?? root.documentElement.clientHeight;
+      const centerX = viewportWidth / 2;
+      const centerY = viewportHeight / 2;
+
+      candidates.sort((left, right) => {
+        const leftRect = left.image.getBoundingClientRect();
+        const rightRect = right.image.getBoundingClientRect();
+        const leftDist =
+          Math.abs(leftRect.left + leftRect.width / 2 - centerX) +
+          Math.abs(leftRect.top + leftRect.height / 2 - centerY);
+        const rightDist =
+          Math.abs(rightRect.left + rightRect.width / 2 - centerX) +
+          Math.abs(rightRect.top + rightRect.height / 2 - centerY);
+        return leftDist - rightDist;
+      });
+    }
+
+    return candidates[0];
   };
 
   const detailWinner = chooseWinner(
@@ -357,11 +382,45 @@ function findAuthorAndDate(root: Document) {
 }
 
 function findTagText(root: Document, matcher: (value: string) => boolean): string {
-  const values = Array.from(root.querySelectorAll('.prompt-tags-Ixl0vJ span, .prompt-tags-Ixl0vJ div'))
+  const selectors = [
+    '.prompt-tags-Ixl0vJ span, .prompt-tags-Ixl0vJ div',
+    '[class*="prompt-tag"] span, [class*="prompt-tag"] div',
+    '[class*="tag-list"] span, [class*="tag-list"] div',
+    '[class*="info-tag"] span, [class*="info-tag"] div'
+  ];
+
+  for (const selector of selectors) {
+    const values = Array.from(root.querySelectorAll(selector))
+      .map((element) => textOf(element))
+      .filter(Boolean);
+    const match = values.find(matcher);
+    if (match) {
+      return match;
+    }
+  }
+
+  // Fallback: scan all text nodes near the prompt area
+  const promptLabel = Array.from(root.querySelectorAll('*')).find(
+    (element) => textOf(element) === '图片提示词'
+  );
+  if (promptLabel) {
+    const container = promptLabel.closest('section, div[class*="detail"], div[class*="info"]') ?? promptLabel.parentElement;
+    if (container) {
+      const values = Array.from(container.querySelectorAll('span, div, p'))
+        .map((element) => textOf(element))
+        .filter(Boolean);
+      const match = values.find(matcher);
+      if (match) {
+        return match;
+      }
+    }
+  }
+
+  // Last resort: full-page scan
+  const allValues = Array.from(root.querySelectorAll('span, div, p'))
     .map((element) => textOf(element))
     .filter(Boolean);
-
-  return values.find(matcher) ?? '';
+  return allValues.find(matcher) ?? '';
 }
 
 export interface ReadinessItem {

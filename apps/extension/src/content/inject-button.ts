@@ -214,7 +214,13 @@ function findActionButtonsContainer(root: Document): HTMLElement | null {
   const buttons = Array.from(root.querySelectorAll('button'));
   const nativeActionButton = buttons.find((button) => {
     const text = button.textContent?.replace(/\s+/g, '') ?? '';
-    return text.includes('做同款') || text.includes('用作参考图');
+    return (
+      text.includes('做同款') ||
+      text.includes('用作参考图') ||
+      text.includes('生成同款') ||
+      text.includes('参考创作') ||
+      text.includes('同款')
+    );
   });
 
   const fallbackContainer =

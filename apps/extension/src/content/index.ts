@@ -965,6 +965,8 @@ function bootstrap() {
 
   const startReadinessPolling = () => {
     stopReadinessPolling();
+    const startTime = Date.now();
+    const MAX_LOADING_MS = 3000;
 
     const poll = () => {
       if (!isCurrentInstance()) {
@@ -972,7 +974,9 @@ function bootstrap() {
       }
 
       const readiness = getPageReadiness(document);
-      if (readiness.allReady) {
+      const elapsed = Date.now() - startTime;
+
+      if (readiness.allReady || elapsed >= MAX_LOADING_MS) {
         stopReadinessPolling();
         if (buttonState.status === 'loading') {
           resetButtonState();
