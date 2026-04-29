@@ -210,6 +210,76 @@ describe('extractJimengDetailPayload', () => {
     expect(result.imageSourceUrl).toBe('https://example.com/current-detail-image.webp');
   });
 
+  it('extracts a detail player background image when Jimeng does not render an img node', () => {
+    document.body.innerHTML = `
+      <div
+        class="image-player-KCJSe1"
+        style="width: 936px; height: 1664px; background-image: url(&quot;https://example.com/background-detail-image.webp&quot;);"
+      ></div>
+      <div class="detail-info-n1sIVT">
+        <div class="prompt-tip-_S_YjR">图片提示词</div>
+        <div class="prompt-value-H7u3lm">
+          <div class="prompt-value-text-cJL62n">
+            <span class="prompt-value-container-lIP4pF">
+              <span>背景图渲染的详情主图</span>
+            </span>
+          </div>
+        </div>
+        <div class="prompt-tags-Ixl0vJ">
+          <span>图片 4.5</span>
+          <span>9:16</span>
+        </div>
+      </div>
+    `;
+
+    window.history.replaceState(
+      {},
+      '',
+      '/ai-tool/work-detail/7593295293941124361?workDetailType=Image&itemType=9'
+    );
+
+    const result = extractJimengDetailPayload(document);
+
+    expect(result.imageSourceUrl).toBe('https://example.com/background-detail-image.webp');
+  });
+
+  it('extracts the largest visible background image when Jimeng changes player class names', () => {
+    document.body.innerHTML = `
+      <div
+        class="opaque-new-player-shell"
+        style="width: 936px; height: 1664px; background-image: url(&quot;https://example.com/renamed-player-background.webp&quot;);"
+      ></div>
+      <div
+        class="small-icon"
+        style="width: 40px; height: 40px; background-image: url(&quot;https://example.com/icon.webp&quot;);"
+      ></div>
+      <div class="detail-info-n1sIVT">
+        <div class="prompt-tip-_S_YjR">图片提示词</div>
+        <div class="prompt-value-H7u3lm">
+          <div class="prompt-value-text-cJL62n">
+            <span class="prompt-value-container-lIP4pF">
+              <span>主图容器 class 被即梦改名</span>
+            </span>
+          </div>
+        </div>
+        <div class="prompt-tags-Ixl0vJ">
+          <span>图片 3.1</span>
+          <span>9:16</span>
+        </div>
+      </div>
+    `;
+
+    window.history.replaceState(
+      {},
+      '',
+      '/ai-tool/work-detail/7593295293941124361?workDetailType=Image&itemType=9'
+    );
+
+    const result = extractJimengDetailPayload(document);
+
+    expect(result.imageSourceUrl).toBe('https://example.com/renamed-player-background.webp');
+  });
+
   it('does not fall back to Jimeng gallery covers before the detail image is ready', () => {
     document.body.innerHTML = `
       <div class="detail-info-n1sIVT">

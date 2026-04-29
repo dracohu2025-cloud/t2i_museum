@@ -1,4 +1,4 @@
-import { extractJimengDetailPayload, hasLoadedJimengDetailImage } from './dom-extract';
+import { extractJimengDetailPayload, getPageReadiness, hasLoadedJimengDetailImage } from './dom-extract';
 import type { ApprovedStyleTag, CollectWorkPayload } from '@t2i/contracts';
 import {
   type CollectButtonActionResult,
@@ -102,6 +102,7 @@ let progressPollTimer = 0;
 let currentRouteToken = 0;
 let routeWatchTimer = 0;
 let detailRetryTimer = 0;
+let readinessPollTimer = 0;
 let lastKnownUrl = '';
 let lastFetchWorkProgressTime = 0;
 let activeDetailWorkId = '';
@@ -120,6 +121,13 @@ function isCurrentInstance() {
   return !disposed && runtimeGlobal.__t2iMuseumContentCleanup === cleanupCurrentInstance;
 }
 
+function stopReadinessPolling() {
+  if (readinessPollTimer) {
+    window.clearTimeout(readinessPollTimer);
+    readinessPollTimer = 0;
+  }
+}
+
 function cleanupCurrentInstance() {
   disposed = true;
   syncScheduled = false;
@@ -135,6 +143,7 @@ function cleanupCurrentInstance() {
   stopProgressPolling();
   stopRouteWatch();
   stopDetailRetry();
+  stopReadinessPolling();
 
   for (const handler of cleanupHandlers.splice(0).reverse()) {
     try {
@@ -954,6 +963,40 @@ function bootstrap() {
     progressPollTimer = window.setTimeout(poll, 250);
   };
 
+  const startReadinessPolling = () => {
+    stopReadinessPolling();
+
+    const poll = () => {
+      if (!isCurrentInstance()) {
+        return;
+      }
+
+      const readiness = getPageReadiness(document);
+      if (readiness.allReady) {
+        stopReadinessPolling();
+        if (buttonState.status === 'loading') {
+          resetButtonState();
+          injectCollectButton(options, buttonState);
+        }
+        return;
+      }
+
+      buttonState.status = 'loading';
+      buttonState.progressPercent = readiness.percent;
+      const pendingLabels = readiness.items
+        .filter((item) => !item.ready)
+        .map((item) => item.label);
+      buttonState.message = pendingLabels.length > 0
+        ? `${pendingLabels.join('、')} 加载中…`
+        : '等待页面元素加载…';
+
+      injectCollectButton(options, buttonState);
+      readinessPollTimer = window.setTimeout(poll, 250);
+    };
+
+    poll();
+  };
+
   const syncRoute = () => {
     if (!isCurrentInstance()) {
       return;
@@ -980,8 +1023,13 @@ function bootstrap() {
     if (workChanged) {
       activeDetailWorkId = workId;
       stopProgressPolling();
+      stopReadinessPolling();
       resetButtonState();
+      buttonState.status = 'loading';
+      buttonState.progressPercent = 0;
+      buttonState.message = '等待页面元素加载…';
       lastFetchWorkProgressTime = 0;
+      startReadinessPolling();
     }
 
     if (!routeObserver) {
@@ -1011,13 +1059,17 @@ function bootstrap() {
       }
 
       const cachedProgress = loadCachedProgress(window.localStorage, workId);
+
+      if (cachedProgress || progressResult.exists) {
+        stopReadinessPolling();
+      }
+
       if (cachedProgress) {
         applyProgressToButton(cachedProgress, workId);
         injectCollectButton(options, buttonState);
       }
 
       if (!progressResult.exists && !cachedProgress) {
-        // Only reset if the user hasn't already clicked COLLECT on this page.
         if (buttonState.status === 'idle') {
           resetButtonState();
           injectCollectButton(options, buttonState);

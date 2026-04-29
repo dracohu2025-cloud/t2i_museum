@@ -36,6 +36,14 @@ type AnalysisOutcome =
       error: unknown;
     };
 
+function shouldPromoteExistingStyleName(existingName: string, resolvedName: string): boolean {
+  return (
+    /(?:风格|主义)$/u.test(resolvedName) &&
+    !/(?:风格|主义)$/u.test(existingName) &&
+    normalizeStyleTerm(existingName) === normalizeStyleTerm(resolvedName)
+  );
+}
+
 export function startIngestWork(input: IngestWorkInput): StartedIngestWork {
   const created = input.repository.createPendingWork(input.payload);
 
@@ -265,7 +273,14 @@ export function applyStyleAnalysisToWork(
       repository.findStyleByName(resolvedStyle.name);
 
     const style =
-      existingStyle ??
+      existingStyle && shouldPromoteExistingStyleName(existingStyle.name, resolvedStyle.name)
+        ? repository.promoteStyleDisplayName({
+            styleId: existingStyle.id,
+            name: resolvedStyle.name,
+            termType: resolvedStyle.termType,
+            shortDescription: resolvedStyle.shortDescription
+          })
+        : existingStyle ??
       repository.createStyle({
         name: resolvedStyle.name,
         termType: resolvedStyle.termType,

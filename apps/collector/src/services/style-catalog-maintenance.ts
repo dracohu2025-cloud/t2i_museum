@@ -1,6 +1,11 @@
 import type Database from 'better-sqlite3';
 
-import { canonicalStyleRules, createStyleSlug, normalizeStyleTerm } from './style-normalizer';
+import {
+  canonicalStyleRules,
+  cleanStyleDisplayName,
+  createStyleSlug,
+  normalizeStyleTerm
+} from './style-normalizer';
 
 interface StyleRow {
   id: number;
@@ -8,6 +13,56 @@ interface StyleRow {
   term_type: string;
   short_description: string;
   hero_work_id: number | null;
+}
+
+function findDirectStyleSuffixName(db: Database.Database, matchedStyles: StyleRow[]): string {
+  const existingName = matchedStyles
+    .map((style) => cleanStyleDisplayName(style.name))
+    .find(
+      (name) =>
+        (name.length > '风格'.length && name.endsWith('风格')) ||
+        (name.length > '主义'.length && name.endsWith('主义'))
+    );
+  if (existingName) {
+    return existingName;
+  }
+
+  for (const style of matchedStyles) {
+    const rows = db
+      .prepare(
+        `
+          SELECT work_styles.evidence_text AS evidenceText,
+                 works.prompt_raw AS promptRaw
+          FROM work_styles
+          LEFT JOIN works ON works.id = work_styles.work_id
+          WHERE work_styles.style_id = ?
+        `
+      )
+      .all(style.id) as Array<{
+      evidenceText: string;
+      promptRaw: string;
+    }>;
+
+    for (const row of rows) {
+      const evidence = cleanStyleDisplayName(row.evidenceText);
+      if (
+        (evidence.length > '风格'.length && evidence.endsWith('风格')) ||
+        (evidence.length > '主义'.length && evidence.endsWith('主义'))
+      ) {
+        return evidence;
+      }
+
+      const baseName = cleanStyleDisplayName(style.name);
+      if (baseName && !baseName.endsWith('风格') && row.promptRaw.includes(`${baseName}风格`)) {
+        return `${baseName}风格`;
+      }
+      if (baseName && !baseName.endsWith('主义') && row.promptRaw.includes(`${baseName}主义`)) {
+        return `${baseName}主义`;
+      }
+    }
+  }
+
+  return '';
 }
 
 export function normalizeStyleCatalog(db: Database.Database) {
@@ -63,6 +118,8 @@ export function normalizeStyleCatalog(db: Database.Database) {
           (style) => normalizeStyleTerm(style.name) === normalizeStyleTerm(rule.canonicalName)
         ) ?? matchedStyles[0];
 
+      const displayName = findDirectStyleSuffixName(db, matchedStyles) || rule.canonicalName;
+
       db.prepare(
         `
           UPDATE styles
@@ -74,14 +131,14 @@ export function normalizeStyleCatalog(db: Database.Database) {
           WHERE id = ?
         `
       ).run(
-        createStyleSlug(rule.canonicalName),
-        rule.canonicalName,
+        createStyleSlug(displayName),
+        displayName,
         rule.termType,
         canonicalStyle.short_description.trim() ? canonicalStyle.short_description : rule.shortDescription,
         canonicalStyle.id
       );
 
-      for (const alias of new Set([rule.canonicalName, ...rule.aliases, ...matchedStyles.map((style) => style.name)])) {
+      for (const alias of new Set([displayName, rule.canonicalName, ...rule.aliases, ...matchedStyles.map((style) => style.name)])) {
         ensureAlias(canonicalStyle.id, alias, 'rule', 1);
       }
 
@@ -166,6 +223,56 @@ export function normalizeStyleCatalog(db: Database.Database) {
         db.prepare('DELETE FROM style_aliases WHERE style_id = ?').run(duplicate.id);
         db.prepare('DELETE FROM styles WHERE id = ?').run(duplicate.id);
       }
+    }
+
+    const currentStyles = db
+      .prepare(
+        `
+          SELECT id, name, term_type, short_description, hero_work_id
+          FROM styles
+          ORDER BY id ASC
+        `
+      )
+      .all() as StyleRow[];
+
+    for (const style of currentStyles) {
+      if (/(?:风格|主义)$/u.test(cleanStyleDisplayName(style.name))) {
+        continue;
+      }
+
+      const displayName = findDirectStyleSuffixName(db, [style]);
+      if (!displayName || normalizeStyleTerm(displayName) !== normalizeStyleTerm(style.name)) {
+        continue;
+      }
+
+      const nextSlug = createStyleSlug(displayName);
+      const owner = db
+        .prepare(
+          `
+            SELECT id
+            FROM styles
+            WHERE slug = ?
+            LIMIT 1
+          `
+        )
+        .get(nextSlug) as { id: number } | undefined;
+
+      if (owner && owner.id !== style.id) {
+        continue;
+      }
+
+      db.prepare(
+        `
+          UPDATE styles
+          SET slug = ?,
+              name = ?,
+              updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `
+      ).run(nextSlug, displayName, style.id);
+
+      ensureAlias(style.id, style.name, 'maintenance', 1);
+      ensureAlias(style.id, displayName, 'maintenance', 1);
     }
   });
 

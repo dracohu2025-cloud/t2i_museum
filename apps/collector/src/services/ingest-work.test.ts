@@ -14,6 +14,41 @@ import type { StyleAnalyzer } from './style-analyzer';
 import { WorkRepository } from './work-repository';
 import { ingestWork } from './ingest-work';
 
+async function createIngestImageServer() {
+  const imageBuffer = await sharp({
+    create: {
+      width: 4,
+      height: 5,
+      channels: 3,
+      background: { r: 20, g: 40, b: 200 }
+    }
+  })
+    .webp()
+    .toBuffer();
+
+  const server = createServer((_, res) => {
+    res.writeHead(200, { 'content-type': 'image/webp' });
+    res.end(imageBuffer);
+  });
+
+  await new Promise<void>((resolve) => {
+    server.listen(0, '127.0.0.1', () => resolve());
+  });
+
+  const address = server.address();
+  if (!address || typeof address === 'string') {
+    throw new Error('failed to bind ingest test server');
+  }
+
+  return { server, address };
+}
+
+function createMigratedDatabase(dataDir: string) {
+  const db = openDatabase(dataDir);
+  runMigrations(db);
+  return db;
+}
+
 describe('ingestWork', () => {
   it('creates a completed work and fills cached image fields', async () => {
     const dataDir = './tmp/ingest-work-success';
@@ -251,13 +286,168 @@ describe('ingestWork', () => {
       { name: '极繁主义' }
     ]);
     expect(aliases.map((alias) => alias.alias_norm)).toEqual(
-      expect.arrayContaining(['moebius (jean giraud)', '极繁主义'])
+      expect.arrayContaining(['moebius (jean giraud)', '极繁'])
     );
     expect(links.count).toBe(2);
     expect(runs).toEqual([{ status: 'succeeded' }]);
 
     db.close();
 
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
+  });
+
+  it('promotes an existing short style name when the prompt explicitly uses 风格', async () => {
+    const dataDir = './tmp/ingest-work-promote-style-suffix';
+    fs.rmSync(dataDir, { recursive: true, force: true });
+    const { server, address } = await createIngestImageServer();
+    const db = createMigratedDatabase(dataDir);
+    const repository = new WorkRepository(db);
+
+    const styleId = db
+      .prepare(
+        `
+          INSERT INTO styles (slug, name, term_type, status, short_description)
+          VALUES ('插画', '插画', 'medium_rendering', 'active', '旧词库短名')
+        `
+      )
+      .run().lastInsertRowid;
+    db.prepare(
+      `
+        INSERT INTO style_aliases (style_id, alias_name, alias_norm, source, confidence)
+        VALUES (?, '插画', '插画', 'manual', 1)
+      `
+    ).run(styleId);
+
+    await ingestWork({
+      repository,
+      cacheDir: path.join(dataDir, 'cache', 'originals'),
+      payload: {
+        sourceSite: 'jimeng',
+        sourceWorkId: 'promote-style-suffix',
+        sourceUrl:
+          'https://jimeng.jianying.com/ai-tool/work-detail/promote-style-suffix?workDetailType=Image&itemType=9',
+        promptRaw: '治愈系高清壁纸，插画风格，一只巨大的粉白色沙猫。',
+        imageSourceUrl: `http://127.0.0.1:${address.port}/sample.webp`,
+        authorName: '',
+        publishedAt: '',
+        modelLabel: '',
+        aspectRatio: ''
+      },
+      styleAnalyzer: {
+        async analyzePrompt() {
+          return {
+            candidates: [
+              {
+                rawTerm: '插画风格',
+                normalizedCandidate: '插画风格',
+                termType: 'medium_rendering',
+                confidence: 0.95,
+                shouldBeStyleTag: true,
+                shortExplanation: 'prompt 中显式出现的风格词'
+              }
+            ]
+          };
+        }
+      }
+    });
+
+    const styles = db
+      .prepare('SELECT name, slug FROM styles ORDER BY id')
+      .all() as Array<{ name: string; slug: string }>;
+    expect(styles).toEqual([
+      {
+        name: '插画风格',
+        slug: '插画风格'
+      }
+    ]);
+
+    db.close();
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
+  });
+
+  it('promotes an existing short style name when the prompt explicitly uses 主义', async () => {
+    const dataDir = './tmp/ingest-work-promote-ism-suffix';
+    fs.rmSync(dataDir, { recursive: true, force: true });
+    const { server, address } = await createIngestImageServer();
+    const db = createMigratedDatabase(dataDir);
+    const repository = new WorkRepository(db);
+
+    const styleId = db
+      .prepare(
+        `
+          INSERT INTO styles (slug, name, term_type, status, short_description)
+          VALUES ('极简', '极简', 'aesthetic_style', 'active', '旧词库短名')
+        `
+      )
+      .run().lastInsertRowid;
+    db.prepare(
+      `
+        INSERT INTO style_aliases (style_id, alias_name, alias_norm, source, confidence)
+        VALUES (?, '极简', '极简', 'manual', 1)
+      `
+    ).run(styleId);
+
+    await ingestWork({
+      repository,
+      cacheDir: path.join(dataDir, 'cache', 'originals'),
+      payload: {
+        sourceSite: 'jimeng',
+        sourceWorkId: 'promote-ism-suffix',
+        sourceUrl:
+          'https://jimeng.jianying.com/ai-tool/work-detail/promote-ism-suffix?workDetailType=Image&itemType=9',
+        promptRaw: '极简主义构图，留白，冷静的线条。',
+        imageSourceUrl: `http://127.0.0.1:${address.port}/sample.webp`,
+        authorName: '',
+        publishedAt: '',
+        modelLabel: '',
+        aspectRatio: ''
+      },
+      styleAnalyzer: {
+        async analyzePrompt() {
+          return {
+            candidates: [
+              {
+                rawTerm: '极简主义',
+                normalizedCandidate: '极简主义',
+                termType: 'movement_style',
+                confidence: 0.95,
+                shouldBeStyleTag: true,
+                shortExplanation: 'prompt 中显式出现的主义词'
+              }
+            ]
+          };
+        }
+      }
+    });
+
+    const styles = db
+      .prepare('SELECT name, slug, term_type as termType FROM styles ORDER BY id')
+      .all() as Array<{ name: string; slug: string; termType: string }>;
+    expect(styles).toEqual([
+      {
+        name: '极简主义',
+        slug: '极简主义',
+        termType: 'movement_style'
+      }
+    ]);
+
+    db.close();
     await new Promise<void>((resolve, reject) => {
       server.close((error) => {
         if (error) {

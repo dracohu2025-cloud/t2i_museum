@@ -346,6 +346,196 @@ describe('POST /api/collect', () => {
     });
   });
 
+  it('falls back to heuristic preview candidates when online analysis fails', async () => {
+    const dataDir = './tmp/test-collect-preview-heuristic-fallback';
+    fs.rmSync(dataDir, { recursive: true, force: true });
+    const { server, imageUrl } = await createImageServer();
+    const styleAnalyzer: StyleAnalyzer = {
+      async analyzePrompt() {
+        throw new Error('preview timeout');
+      }
+    };
+
+    const app = buildApp({ dataDir, styleAnalyzer });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/collect/preview',
+      payload: {
+        sourceSite: 'jimeng',
+        sourceWorkId: 'w-preview-fallback',
+        sourceUrl:
+          'https://jimeng.jianying.com/ai-tool/work-detail/w-preview-fallback?workDetailType=Image&itemType=9',
+        promptRaw: '治愈系高清壁纸，插画风格，一只巨大的粉白色沙猫。',
+        imageSourceUrl: imageUrl
+      }
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().candidates).toEqual([
+      expect.objectContaining({
+        name: '插画风格',
+        rawTerm: '插画风格'
+      })
+    ]);
+
+    await app.close();
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
+  });
+
+  it('previews the explicit 风格 suffix even when the short form already exists in catalog', async () => {
+    const dataDir = './tmp/test-collect-preview-style-suffix';
+    fs.rmSync(dataDir, { recursive: true, force: true });
+    const { server, imageUrl } = await createImageServer();
+    const styleAnalyzer: StyleAnalyzer = {
+      async analyzePrompt() {
+        return {
+          candidates: [
+            {
+              rawTerm: '插画风格',
+              normalizedCandidate: '插画风格',
+              termType: 'medium_rendering',
+              confidence: 0.9,
+              shouldBeStyleTag: true,
+              shortExplanation: 'prompt 中显式出现的风格词'
+            }
+          ]
+        };
+      }
+    };
+
+    const app = buildApp({ dataDir, styleAnalyzer });
+    app.collectorDb
+      .prepare(
+        `
+          INSERT INTO styles (slug, name, term_type, status, short_description)
+          VALUES ('插画', '插画', 'medium_rendering', 'active', '旧词库短名')
+        `
+      )
+      .run();
+    app.collectorDb
+      .prepare(
+        `
+          INSERT INTO style_aliases (style_id, alias_name, alias_norm, source, confidence)
+          VALUES (1, '插画', '插画', 'manual', 1)
+        `
+      )
+      .run();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/collect/preview',
+      payload: {
+        sourceSite: 'jimeng',
+        sourceWorkId: 'w-preview-style-suffix',
+        sourceUrl:
+          'https://jimeng.jianying.com/ai-tool/work-detail/w-preview-style-suffix?workDetailType=Image&itemType=9',
+        promptRaw: '治愈系高清壁纸，插画风格，一只巨大的粉白色沙猫。',
+        imageSourceUrl: imageUrl
+      }
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().candidates).toEqual([
+      expect.objectContaining({
+        name: '插画风格',
+        rawTerm: '插画风格',
+        existsInCatalog: true
+      })
+    ]);
+
+    await app.close();
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
+  });
+
+  it('previews the explicit 主义 suffix even when the short form already exists in catalog', async () => {
+    const dataDir = './tmp/test-collect-preview-ism-suffix';
+    fs.rmSync(dataDir, { recursive: true, force: true });
+    const { server, imageUrl } = await createImageServer();
+    const styleAnalyzer: StyleAnalyzer = {
+      async analyzePrompt() {
+        return {
+          candidates: [
+            {
+              rawTerm: '极简主义',
+              normalizedCandidate: '极简主义',
+              termType: 'movement_style',
+              confidence: 0.9,
+              shouldBeStyleTag: true,
+              shortExplanation: 'prompt 中显式出现的主义词'
+            }
+          ]
+        };
+      }
+    };
+
+    const app = buildApp({ dataDir, styleAnalyzer });
+    app.collectorDb
+      .prepare(
+        `
+          INSERT INTO styles (slug, name, term_type, status, short_description)
+          VALUES ('极简', '极简', 'aesthetic_style', 'active', '旧词库短名')
+        `
+      )
+      .run();
+    app.collectorDb
+      .prepare(
+        `
+          INSERT INTO style_aliases (style_id, alias_name, alias_norm, source, confidence)
+          VALUES (1, '极简', '极简', 'manual', 1)
+        `
+      )
+      .run();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/collect/preview',
+      payload: {
+        sourceSite: 'jimeng',
+        sourceWorkId: 'w-preview-ism-suffix',
+        sourceUrl:
+          'https://jimeng.jianying.com/ai-tool/work-detail/w-preview-ism-suffix?workDetailType=Image&itemType=9',
+        promptRaw: '极简主义构图，留白，冷静的线条。',
+        imageSourceUrl: imageUrl
+      }
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().candidates).toEqual([
+      expect.objectContaining({
+        name: '极简主义',
+        rawTerm: '极简主义',
+        existsInCatalog: true
+      })
+    ]);
+
+    await app.close();
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
+  });
+
   it('stores user-approved styles instead of re-running free extraction', async () => {
     const dataDir = './tmp/test-collect-approved-styles';
     fs.rmSync(dataDir, { recursive: true, force: true });

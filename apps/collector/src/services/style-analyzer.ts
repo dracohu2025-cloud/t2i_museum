@@ -457,7 +457,7 @@ function parseToolArguments(toolArguments: unknown): StyleAnalysisResult | undef
 }
 
 function classifyHeuristicTerm(term: string): StyleAnalysisCandidate['termType'] {
-  if (/^(?:插画|立绘|海报|摄影|写真|油画|水彩|水粉|水墨|版画|丙烯|厚涂)$/u.test(term)) {
+  if (/^(?:插画|插画风格|立绘|海报|摄影|写真|油画|水彩|水粉|水墨|版画|丙烯|厚涂)$/u.test(term)) {
     return 'medium_rendering';
   }
 
@@ -840,11 +840,11 @@ function escapeRegExp(value: string): string {
 
 function findPromptAdjacentStylePhrase(term: string, promptRaw: string): string {
   const trimmed = term.trim();
-  if (!trimmed || trimmed.endsWith('风格')) {
+  if (!trimmed || /(?:风格|主义)$/u.test(trimmed)) {
     return '';
   }
 
-  return promptRaw.match(new RegExp(`${escapeRegExp(trimmed)}风格`, 'iu'))?.[0] ?? '';
+  return promptRaw.match(new RegExp(`${escapeRegExp(trimmed)}(?:风格|主义)`, 'iu'))?.[0] ?? '';
 }
 
 function filterModelCandidatesByPrompt(
@@ -881,14 +881,15 @@ function filterModelCandidatesByPrompt(
         {
           ...candidate,
           rawTerm: promptStylePhrase,
-          normalizedCandidate: promptStylePhrase
+          normalizedCandidate: promptStylePhrase,
+          termType: classifyHeuristicTerm(promptStylePhrase)
         }
       ];
     })
   };
 }
 
-function extractHeuristicStyleCandidates(promptRaw: string): StyleAnalysisResult {
+export function extractHeuristicStyleCandidates(promptRaw: string): StyleAnalysisResult {
   const matches = promptRaw.match(
     /([A-Za-z0-9\u4e00-\u9fff()（）·_\-\s]{0,28}?(?:动漫风格立绘|国漫风格立绘|日本动漫风格立绘|风格立绘|动漫风格|国漫风格|网游动漫风|水彩插画风格|水粉插画风格|油画插画风格|丙烯插画风格|版画插画风格|水彩插画|水粉插画|油画插画|丙烯插画|版画插画|插画风格|插画|风格|画风|主义|渲染|油画|水彩|水粉|水墨|版画|丙烯|厚涂|立绘))/gu
   );

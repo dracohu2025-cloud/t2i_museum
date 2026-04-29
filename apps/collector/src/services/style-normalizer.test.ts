@@ -45,7 +45,7 @@ describe('resolveCanonicalStyle', () => {
       shortExplanation: 'test'
     });
 
-    expect(resolved.name).toBe('莫奈油画风格');
+    expect(resolved.name).toBe('莫奈油画');
     expect(resolved.termType).toBe('artist_style');
   });
 
@@ -106,7 +106,67 @@ describe('resolveCanonicalStyle', () => {
     expect(normalizeStyleTerm(resolved.name)).toBe(normalizeStyleTerm('动漫水彩'));
   });
 
+  it('does not keep a 风格 suffix that only appears in the model-normalized candidate', () => {
+    const resolved = resolveCanonicalStyle({
+      rawTerm: '厚涂',
+      normalizedCandidate: '厚涂风格',
+      termType: 'medium_rendering',
+      shortExplanation: 'test'
+    });
+
+    expect(resolved.name).toBe('厚涂');
+  });
+
+  it('does not keep a 主义 suffix that only appears in the model-normalized candidate', () => {
+    const resolved = resolveCanonicalStyle({
+      rawTerm: '极简',
+      normalizedCandidate: '极简主义',
+      termType: 'aesthetic_style',
+      shortExplanation: 'test'
+    });
+
+    expect(resolved.name).toBe('极简');
+  });
+
   it('preserves 风格 in generated style slugs', () => {
     expect(createStyleSlug('动漫水彩风格')).toBe('动漫水彩风格');
+  });
+
+  it('removes accidental whitespace before a 风格 suffix', () => {
+    const resolved = resolveCanonicalStyle({
+      rawTerm: '浅色纱织敦煌风汉服 风格',
+      normalizedCandidate: '浅色纱织敦煌风汉服 风格',
+      termType: 'aesthetic_style',
+      shortExplanation: 'test'
+    });
+
+    expect(resolved.name).toBe('浅色纱织敦煌风汉服风格');
+    expect(createStyleSlug(resolved.name)).toBe('浅色纱织敦煌风汉服风格');
+  });
+
+  it('preserves a directly attached 主义 suffix as the database display name', () => {
+    const resolved = resolveCanonicalStyle({
+      rawTerm: '极简主义',
+      normalizedCandidate: '极简',
+      termType: 'movement_style',
+      shortExplanation: 'test'
+    });
+
+    expect(resolved.name).toBe('极简主义');
+    expect(resolved.aliases).toContain('极简');
+    expect(normalizeStyleTerm(resolved.name)).toBe(normalizeStyleTerm('极简'));
+    expect(createStyleSlug(resolved.name)).toBe('极简主义');
+  });
+
+  it('removes accidental whitespace before a 主义 suffix', () => {
+    const resolved = resolveCanonicalStyle({
+      rawTerm: '未来 主义',
+      normalizedCandidate: '未来 主义',
+      termType: 'movement_style',
+      shortExplanation: 'test'
+    });
+
+    expect(resolved.name).toBe('未来主义');
+    expect(createStyleSlug(resolved.name)).toBe('未来主义');
   });
 });

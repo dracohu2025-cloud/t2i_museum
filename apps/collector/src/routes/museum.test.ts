@@ -29,6 +29,9 @@ describe('GET /museum', () => {
     expect(res.body).toContain('/api/anki/cards');
     expect(res.body).toContain('/api/anki/reviews');
     expect(res.body).toContain('anki-card-shell');
+    expect(res.body).toContain('excludeCardId');
+    const inlineScript = res.body.match(/<script>([\s\S]*)<\/script>/)?.[1] ?? '';
+    expect(() => new Function(inlineScript)).not.toThrow();
 
     const workRes = await app.inject({
       method: 'GET',

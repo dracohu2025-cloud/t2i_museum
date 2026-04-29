@@ -372,6 +372,61 @@ export class WorkRepository {
     };
   }
 
+  promoteStyleDisplayName(input: {
+    styleId: number;
+    name: string;
+    termType: StyleTermType;
+    shortDescription: string;
+  }): StyleRecord {
+    const slug = createStyleSlug(input.name);
+    const slugOwner = this.db
+      .prepare(
+        `
+          SELECT id
+          FROM styles
+          WHERE slug = ?
+          LIMIT 1
+        `
+      )
+      .get(slug) as { id: number } | undefined;
+
+    if (slugOwner && slugOwner.id !== input.styleId) {
+      return this.db
+        .prepare(
+          `
+            SELECT id, name, term_type as termType
+            FROM styles
+            WHERE id = ?
+            LIMIT 1
+          `
+        )
+        .get(input.styleId) as StyleRecord;
+    }
+
+    this.db
+      .prepare(
+        `
+          UPDATE styles
+          SET slug = ?,
+              name = ?,
+              term_type = ?,
+              short_description = CASE
+                WHEN short_description = '' THEN ?
+                ELSE short_description
+              END,
+              updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `
+      )
+      .run(slug, input.name, input.termType, input.shortDescription, input.styleId);
+
+    return {
+      id: input.styleId,
+      name: input.name,
+      termType: input.termType
+    };
+  }
+
   ensureStyleAlias(input: {
     styleId: number;
     aliasName: string;
@@ -524,6 +579,7 @@ export class WorkRepository {
         .all(work.id) as Array<{ style_id: number }>;
 
       this.db.prepare('UPDATE styles SET hero_work_id = NULL WHERE hero_work_id = ?').run(work.id);
+      this.db.prepare('DELETE FROM anki_reviews WHERE work_id = ?').run(work.id);
       this.db.prepare('DELETE FROM work_styles WHERE work_id = ?').run(work.id);
       this.db.prepare('DELETE FROM analysis_runs WHERE work_id = ?').run(work.id);
       this.db.prepare('DELETE FROM works WHERE id = ?').run(work.id);

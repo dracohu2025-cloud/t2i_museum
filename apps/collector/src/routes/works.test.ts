@@ -249,6 +249,21 @@ describe('GET /api/works', () => {
     });
     await waitForWorkDone(app, 'delete-work');
 
+    const cardsRes = await app.inject({
+      method: 'GET',
+      url: '/api/anki/cards'
+    });
+    const card = (cardsRes.json() as { items: Array<{ workId: number; answer: { slug: string } }> }).items[0];
+    await app.inject({
+      method: 'POST',
+      url: '/api/anki/reviews',
+      payload: {
+        workId: card.workId,
+        styleSlug: card.answer.slug,
+        correct: false
+      }
+    });
+
     const deleteRes = await app.inject({
       method: 'DELETE',
       url: '/api/works/delete-work'
@@ -274,6 +289,10 @@ describe('GET /api/works', () => {
     expect(stylesRes.json()).toEqual({
       items: []
     });
+    const reviewCount = app.collectorDb
+      .prepare('SELECT COUNT(*) AS count FROM anki_reviews')
+      .get() as { count: number };
+    expect(reviewCount.count).toBe(0);
 
     await app.close();
 

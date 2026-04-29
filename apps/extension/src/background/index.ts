@@ -255,7 +255,7 @@ runtimeApi?.onMessage?.addListener((message, _sender, sendResponse) => {
             'content-type': 'application/json'
           },
           body: JSON.stringify(payload),
-          signal: AbortSignal.timeout(30_000)
+          signal: AbortSignal.timeout(60_000)
         });
         const data = await response.json();
 

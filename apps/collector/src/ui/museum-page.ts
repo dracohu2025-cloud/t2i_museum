@@ -2141,20 +2141,38 @@ export function renderMuseumPage() {
               review: card.review,
               styleNames
             };
-          }));
+          });
       }
 
-      function drawAnkiCard() {
+      function chooseAnkiPool(excludeCardId) {
         if (!state.anki.deck.length) {
+          return [];
+        }
+
+        const dueCards = state.anki.deck.filter((item) => item.review?.isDue);
+        const lapsedDueCards = dueCards.filter((item) => (item.review?.lapses || 0) > 0);
+        const tiers = [lapsedDueCards, dueCards, state.anki.deck];
+        for (const tier of tiers) {
+          const filtered = excludeCardId
+            ? tier.filter((item) => item.apiCard?.cardId !== excludeCardId)
+            : tier;
+          if (filtered.length > 0) {
+            return filtered;
+          }
+        }
+
+        return state.anki.deck;
+      }
+
+      function drawAnkiCard(excludeCardId = '') {
+        const pool = chooseAnkiPool(excludeCardId);
+        if (!pool.length) {
           state.anki.current = null;
           state.anki.answered = false;
           state.anki.selectedOption = '';
           return;
         }
 
-        const dueCards = state.anki.deck.filter((item) => item.review?.isDue);
-        const lapsedDueCards = dueCards.filter((item) => (item.review?.lapses || 0) > 0);
-        const pool = lapsedDueCards.length ? lapsedDueCards : dueCards.length ? dueCards : state.anki.deck;
         const deckItem = pool[Math.floor(Math.random() * pool.length)];
         const answer = deckItem.answer;
         const workStyles = getAnkiStyleTags(deckItem.work);
@@ -2386,7 +2404,7 @@ export function renderMuseumPage() {
         });
 
         ankiOverlayNode?.querySelector('[data-anki-next]')?.addEventListener('click', () => {
-          drawAnkiCard();
+          drawAnkiCard(state.anki.current?.apiCard?.cardId || '');
           renderAnkiOverlay();
         });
 

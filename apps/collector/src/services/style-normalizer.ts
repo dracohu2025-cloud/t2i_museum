@@ -194,8 +194,10 @@ function stripLookupSuffix(term: string): string {
     .replace(/（/g, '(')
     .replace(/）/g, ')')
     .replace(/\s+/g, ' ')
+    .replace(/\s+风格\s*$/u, '风格')
+    .replace(/\s+主义\s*$/u, '主义')
     .replace(/(油画|水彩|水粉|版画|水墨)风\s*$/u, '$1')
-    .replace(/(风格绘画|风格|画风|style)\s*$/iu, '')
+    .replace(/(风格绘画|风格|主义|画风|style)\s*$/iu, '')
     .replace(/[，,。.;；:：]+$/g, '')
     .trim();
 }
@@ -206,6 +208,8 @@ function stripDisplayNoise(term: string): string {
     .replace(/（/g, '(')
     .replace(/）/g, ')')
     .replace(/\s+/g, ' ')
+    .replace(/\s+风格\s*$/u, '风格')
+    .replace(/\s+主义\s*$/u, '主义')
     .replace(/风格绘画\s*$/u, '风格')
     .replace(/(油画|水彩|水粉|版画|水墨)风\s*$/u, '$1')
     .replace(/(画风|style)\s*$/iu, '')
@@ -302,12 +306,17 @@ function findCanonicalStyleRule(term: string): CanonicalStyleRule | undefined {
   );
 }
 
-function directStyleSuffixName(...terms: string[]): string {
-  for (const term of terms) {
-    const displayName = cleanStyleDisplayName(term);
-    if (displayName.length > '风格'.length && displayName.endsWith('风格')) {
-      return displayName;
-    }
+function hasSemanticSuffix(term: string): boolean {
+  return /(?:风格|主义)$/u.test(term);
+}
+
+function directStyleSuffixName(rawTerm: string): string {
+  const displayName = cleanStyleDisplayName(rawTerm);
+  if (
+    (displayName.length > '风格'.length && displayName.endsWith('风格')) ||
+    (displayName.length > '主义'.length && displayName.endsWith('主义'))
+  ) {
+    return displayName;
   }
 
   return '';
@@ -333,6 +342,14 @@ function chooseDisplayName(rawTerm: string, normalizedCandidate: string): string
     return rawDisplay;
   }
 
+  if (
+    !hasSemanticSuffix(rawDisplay) &&
+    hasSemanticSuffix(candidateDisplay) &&
+    normalizeStyleTerm(rawDisplay) === normalizeStyleTerm(candidateDisplay)
+  ) {
+    return rawDisplay;
+  }
+
   if (rawDisplay.length >= candidateDisplay.length + 4) {
     return rawDisplay;
   }
@@ -348,7 +365,7 @@ export function resolveCanonicalStyle(input: {
 }): ResolvedCanonicalStyle {
   const matchedRule =
     findCanonicalStyleRule(input.rawTerm) ?? findCanonicalStyleRule(input.normalizedCandidate);
-  const directStyleName = directStyleSuffixName(input.rawTerm, input.normalizedCandidate);
+  const directStyleName = directStyleSuffixName(input.rawTerm);
 
   if (directStyleName) {
     return {

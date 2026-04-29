@@ -506,6 +506,62 @@ describe('OpenAIStyleAnalyzer', () => {
     );
   });
 
+  it('expands a model-short movement term to the explicit 主义 phrase in the prompt', async () => {
+    const fetchMock = vi.fn(async () => {
+      return new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  candidates: [
+                    {
+                      rawTerm: '极简',
+                      normalizedCandidate: '极简',
+                      termType: 'aesthetic_style',
+                      confidence: 0.9,
+                      shouldBeStyleTag: true,
+                      shortExplanation: 'prompt 中出现的美学词'
+                    }
+                  ]
+                })
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            'content-type': 'application/json'
+          }
+        }
+      );
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    const analyzer = new OpenAIStyleAnalyzer({
+      apiKey: 'test-key',
+      model: 'openai/gpt-5-mini',
+      baseUrl: 'https://api.openai.com/v1',
+      timeoutMs: 15000,
+      promptVersion: 'v1'
+    });
+
+    const result = await analyzer.analyzePrompt({
+      promptRaw: '极简主义构图，留白，冷静的线条。'
+    });
+
+    expect(result.candidates).toContainEqual(
+      expect.objectContaining({
+        rawTerm: '极简主义',
+        normalizedCandidate: '极简主义',
+        termType: 'movement_style',
+        shouldBeStyleTag: true
+      })
+    );
+  });
+
   it('prefers original prompt terms and drops model-translated style tags', async () => {
     const fetchMock = vi.fn(async () => {
       return new Response(

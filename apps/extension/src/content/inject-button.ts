@@ -18,7 +18,7 @@ export interface ObserveCollectButtonOptions extends InjectCollectButtonOptions 
   observerRoot?: ParentNode;
 }
 
-export type CollectButtonStatus = 'idle' | 'collecting' | 'success' | 'error';
+export type CollectButtonStatus = 'idle' | 'loading' | 'collecting' | 'success' | 'error';
 export type CollectProgressTone = 'idle' | 'active' | 'success' | 'error';
 
 export interface CollectButtonState {
@@ -50,11 +50,27 @@ export function removeCollectUi(root: Document) {
   });
 }
 
+function setButtonText(button: HTMLButtonElement, text: string) {
+  const span = button.querySelector('[data-t2i-museum-collect-text]');
+  if (span) {
+    span.textContent = text;
+  } else {
+    button.textContent = text;
+  }
+}
+
+function getButtonInnerBar(button: HTMLButtonElement) {
+  return button.querySelector('[data-t2i-museum-collect-button-bar]') as HTMLDivElement | null;
+}
+
+function getButtonInnerTrack(button: HTMLButtonElement) {
+  return button.querySelector('[data-t2i-museum-collect-button-track]') as HTMLDivElement | null;
+}
+
 function createFreshButton(root: Document): HTMLButtonElement {
   const button = root.createElement('button');
   button.type = 'button';
   button.dataset.t2iMuseumCollect = 'true';
-  button.textContent = 'COLLECT';
   button.style.height = '40px';
   button.style.minWidth = '148px';
   button.style.padding = '0 22px';
@@ -65,7 +81,39 @@ function createFreshButton(root: Document): HTMLButtonElement {
   button.style.fontSize = '14px';
   button.style.fontWeight = '600';
   button.style.cursor = 'pointer';
-  button.style.transition = 'background 160ms ease, border-color 160ms ease';
+  button.style.transition = 'background 160ms ease, border-color 160ms ease, opacity 160ms ease';
+  button.style.position = 'relative';
+  button.style.overflow = 'hidden';
+
+  const textSpan = root.createElement('span');
+  textSpan.dataset.t2iMuseumCollectText = 'true';
+  textSpan.textContent = 'COLLECT';
+  textSpan.style.position = 'relative';
+  textSpan.style.zIndex = '2';
+  button.appendChild(textSpan);
+
+  const track = root.createElement('div');
+  track.dataset.t2iMuseumCollectButtonTrack = 'true';
+  track.style.position = 'absolute';
+  track.style.left = '0';
+  track.style.bottom = '0';
+  track.style.width = '100%';
+  track.style.height = '3px';
+  track.style.background = 'rgba(255,255,255,0.10)';
+  track.style.overflow = 'hidden';
+  track.style.display = 'none';
+  track.style.zIndex = '1';
+
+  const bar = root.createElement('div');
+  bar.dataset.t2iMuseumCollectButtonBar = 'true';
+  bar.style.width = '0%';
+  bar.style.height = '100%';
+  bar.style.background = 'rgba(34, 211, 238, 0.85)';
+  bar.style.transition = 'width 220ms ease';
+
+  track.appendChild(bar);
+  button.appendChild(track);
+
   return button;
 }
 
@@ -328,9 +376,45 @@ function applyButtonState(
   }
   button.dataset.t2iMuseumAppliedState = stateHash;
 
+  const innerTrack = getButtonInnerTrack(button);
+  const innerBar = getButtonInnerBar(button);
+
+  // Reset common button styles
+  button.style.opacity = '';
+  button.style.cursor = '';
+
+  // Hide inner progress by default; loading state will re-enable it
+  if (innerTrack) {
+    innerTrack.style.display = 'none';
+  }
+  if (innerBar) {
+    innerBar.style.width = '0%';
+  }
+
+  if (state.status === 'loading') {
+    button.disabled = true;
+    setButtonText(button, 'COLLECT');
+    button.style.background = 'rgba(8, 51, 68, 0.92)';
+    button.style.borderColor = 'rgba(34, 211, 238, 0.55)';
+    button.style.opacity = '0.72';
+    button.style.cursor = 'default';
+
+    if (innerTrack) {
+      innerTrack.style.display = 'block';
+    }
+    if (innerBar) {
+      innerBar.style.width = `${Math.max(0, Math.min(100, state.progressPercent))}%`;
+    }
+
+    statusNode.textContent = state.message || '等待页面元素加载...';
+    statusNode.style.color = 'rgba(92, 110, 138, 0.92)';
+    applyProgressState(progressNode, { ...state, progressVisible: false });
+    return;
+  }
+
   if (state.status === 'collecting') {
     button.disabled = true;
-    button.textContent = 'COLLECTING...';
+    setButtonText(button, 'COLLECTING...');
     button.style.background = 'rgba(8, 51, 68, 0.92)';
     button.style.borderColor = 'rgba(34, 211, 238, 0.55)';
     statusNode.textContent = state.message || '正在发送到本地 collector...';
@@ -341,7 +425,7 @@ function applyButtonState(
 
   if (state.status === 'success') {
     button.disabled = false;
-    button.textContent = 'COLLECTED';
+    setButtonText(button, 'COLLECTED');
     button.style.background = 'rgba(21, 78, 44, 0.92)';
     button.style.borderColor = 'rgba(74, 222, 128, 0.55)';
     statusNode.textContent = state.message || '已入馆';
@@ -352,7 +436,7 @@ function applyButtonState(
 
   if (state.status === 'error') {
     button.disabled = false;
-    button.textContent = 'RETRY';
+    setButtonText(button, 'RETRY');
     button.style.background = 'rgba(69, 10, 10, 0.92)';
     button.style.borderColor = 'rgba(248, 113, 113, 0.55)';
     statusNode.textContent = state.message || '采集失败，请重试';
@@ -362,7 +446,7 @@ function applyButtonState(
   }
 
   button.disabled = false;
-  button.textContent = 'COLLECT';
+  setButtonText(button, 'COLLECT');
   button.style.background = 'rgba(8, 51, 68, 0.92)';
   button.style.borderColor = 'rgba(34, 211, 238, 0.55)';
   statusNode.textContent = state.message;
@@ -441,7 +525,7 @@ function bindCollectClick(
   button.dataset.t2iMuseumBindingId = nextBindingId;
 
   button.onclick = async () => {
-    if (state.status === 'collecting') {
+    if (state.status === 'collecting' || state.status === 'loading') {
       return;
     }
 

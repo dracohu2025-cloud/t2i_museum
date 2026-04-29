@@ -6,6 +6,7 @@ import { collectWorkPayloadSchema } from '@t2i/contracts';
 import type { StyleAnalysisCandidate } from '@t2i/contracts';
 
 import { startIngestWork } from '../services/ingest-work';
+import { extractHeuristicStyleCandidates } from '../services/style-analyzer';
 import { normalizeStyleTerm, resolveCanonicalStyle, sanitizePreviewTerm } from '../services/style-normalizer';
 import { WorkRepository } from '../services/work-repository';
 
@@ -66,9 +67,18 @@ export async function registerCollectRoute(app: FastifyInstance) {
 
     const repository = new WorkRepository(app.collectorDb);
     request.log.info({ promptLen: payload.promptRaw.length }, 'preview: analyzing prompt');
-    const analysis = await app.styleAnalyzer.analyzePrompt({
-      promptRaw: payload.promptRaw
-    });
+    let analysis;
+    try {
+      analysis = await app.styleAnalyzer.analyzePrompt({
+        promptRaw: payload.promptRaw
+      });
+    } catch (error) {
+      request.log.warn({ err: error }, 'preview: online analysis failed, using heuristic fallback');
+      analysis = extractHeuristicStyleCandidates(payload.promptRaw);
+    }
+    if (analysis.candidates.length === 0) {
+      analysis = extractHeuristicStyleCandidates(payload.promptRaw);
+    }
     request.log.info({ totalCandidates: analysis.candidates.length, styleTags: analysis.candidates.filter(c => c.shouldBeStyleTag).length }, 'preview: analysis done');
 
     return {
@@ -95,9 +105,14 @@ function toPreviewCandidate(repository: WorkRepository, candidate: StyleAnalysis
     repository.findStyleByAliasNorm(normalizeStyleTerm(cleanRawTerm)) ??
     repository.findStyleByAliasNorm(normalizeStyleTerm(resolvedStyle.name)) ??
     repository.findStyleByName(resolvedStyle.name);
+  const shouldPreferResolvedName =
+    Boolean(existingStyle) &&
+    /(?:风格|主义)$/u.test(resolvedStyle.name) &&
+    !/(?:风格|主义)$/u.test(existingStyle?.name ?? '') &&
+    normalizeStyleTerm(existingStyle?.name ?? '') === normalizeStyleTerm(resolvedStyle.name);
 
   return {
-    name: existingStyle?.name ?? resolvedStyle.name,
+    name: shouldPreferResolvedName ? resolvedStyle.name : existingStyle?.name ?? resolvedStyle.name,
     rawTerm: cleanRawTerm,
     termType: resolvedStyle.termType,
     confidence: candidate.confidence,

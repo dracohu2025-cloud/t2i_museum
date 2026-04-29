@@ -75,6 +75,16 @@ const DETAIL_IMAGE_SELECTORS = [
   'img.image-eTuIBd'
 ].join(',');
 
+const DETAIL_IMAGE_CONTAINER_SELECTORS = [
+  '.image-player-KCJSe1',
+  '.image-player-container-V9ZRXE',
+  '.image-player-content-Ml9sbe',
+  '.image-left-content-myH1iF',
+  '.preview-area-QscVpt',
+  '.lv-modal .image-eTuIBd',
+  '.image-eTuIBd'
+].join(',');
+
 function hasUsableImageSource(image: HTMLImageElement) {
   return Boolean(getImageSource(image));
 }
@@ -140,6 +150,23 @@ function getImageSource(image: HTMLImageElement) {
   return lazySource && !lazySource.startsWith('data:') ? lazySource : '';
 }
 
+function extractCssUrl(value: string) {
+  const match = value.match(/url\((['"]?)(.*?)\1\)/i);
+  const url = match?.[2]?.trim() ?? '';
+  return url && !url.startsWith('data:') ? url : '';
+}
+
+function getBackgroundImageSource(root: Document, element: Element) {
+  if (!(element instanceof HTMLElement)) {
+    return '';
+  }
+
+  return (
+    extractCssUrl(element.style.backgroundImage) ||
+    extractCssUrl(root.defaultView?.getComputedStyle(element).backgroundImage ?? '')
+  );
+}
+
 function findPromptElement(root: Document): Element | null {
   const selectors = [
     '.prompt-value-container-lIP4pF',
@@ -171,7 +198,61 @@ function getDetailImages(root: Document) {
   return Array.from(root.querySelectorAll<HTMLImageElement>(DETAIL_IMAGE_SELECTORS));
 }
 
+function getDetailBackgroundImageSources(root: Document) {
+  return Array.from(root.querySelectorAll(DETAIL_IMAGE_CONTAINER_SELECTORS))
+    .filter((element) => {
+      if (!(element instanceof HTMLElement)) {
+        return false;
+      }
+      const style = root.defaultView?.getComputedStyle(element);
+      return !style || (style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0');
+    })
+    .map((element) => getBackgroundImageSource(root, element))
+    .filter((source) => source && !isLikelyThumbnail(source));
+}
+
+function getElementMetrics(element: HTMLElement) {
+  const rect = element.getBoundingClientRect();
+  const width = rect.width || element.clientWidth || Number(element.style.width.replace('px', '')) || 0;
+  const height = rect.height || element.clientHeight || Number(element.style.height.replace('px', '')) || 0;
+  return {
+    width,
+    height,
+    area: width * height,
+    ratio: width > 0 && height > 0 ? width / height : 0
+  };
+}
+
+function getVisibleBackgroundImageCandidates(root: Document) {
+  return Array.from(root.querySelectorAll<HTMLElement>('body *'))
+    .map((element) => {
+      const source = getBackgroundImageSource(root, element);
+      const metrics = getElementMetrics(element);
+      return {
+        element,
+        source,
+        metrics
+      };
+    })
+    .filter((candidate) => {
+      if (!candidate.source || isLikelyThumbnail(candidate.source)) {
+        return false;
+      }
+
+      const style = root.defaultView?.getComputedStyle(candidate.element);
+      if (style && (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0')) {
+        return false;
+      }
+
+      return candidate.metrics.width >= 160 && candidate.metrics.height >= 160;
+    });
+}
+
 export function hasLoadedJimengDetailImage(root: Document) {
+  if (getDetailBackgroundImageSources(root).length > 0) {
+    return true;
+  }
+
   return getDetailImages(root).some((image) => {
     const metrics = getImageMetrics(image);
     const source = getImageSource(image);
@@ -185,7 +266,7 @@ export function hasLoadedJimengDetailImage(root: Document) {
   });
 }
 
-function findPrimaryImage(root: Document, expectedAspectRatio?: string): HTMLImageElement | undefined {
+function findPrimaryImageSource(root: Document, expectedAspectRatio?: string): string {
   const expectedRatio = parseAspectRatio(expectedAspectRatio ?? '');
 
   const buildCandidates = (images: HTMLImageElement[], options: { allowUnmeasured?: boolean } = {}) =>
@@ -224,7 +305,22 @@ function findPrimaryImage(root: Document, expectedAspectRatio?: string): HTMLIma
     )
   );
   if (detailWinner) {
-    return detailWinner.image;
+    return detailWinner.source;
+  }
+
+  const backgroundSource = getDetailBackgroundImageSources(root)[0] ?? '';
+  if (backgroundSource) {
+    return backgroundSource;
+  }
+
+  const backgroundCandidates = getVisibleBackgroundImageCandidates(root);
+  if (backgroundCandidates.length > 0) {
+    const ratioMatched =
+      expectedRatio
+        ? backgroundCandidates.filter((c) => isAspectRatioMatch(c.metrics.ratio, expectedRatio))
+        : [];
+    return (ratioMatched.length > 0 ? ratioMatched : backgroundCandidates)
+      .sort((left, right) => right.metrics.area - left.metrics.area)[0]?.source ?? '';
   }
 
   let candidates = buildCandidates(Array.from(root.images))
@@ -245,7 +341,7 @@ function findPrimaryImage(root: Document, expectedAspectRatio?: string): HTMLIma
     }
   }
 
-  return chooseWinner(candidates)?.image;
+  return chooseWinner(candidates)?.source ?? '';
 }
 
 function findAuthorAndDate(root: Document) {
@@ -268,13 +364,95 @@ function findTagText(root: Document, matcher: (value: string) => boolean): strin
   return values.find(matcher) ?? '';
 }
 
+export interface ReadinessItem {
+  label: string;
+  ready: boolean;
+}
+
+export interface PageReadiness {
+  percent: number;
+  items: ReadinessItem[];
+  allReady: boolean;
+}
+
+function hasPrompt(root: Document): boolean {
+  const selectors = [
+    '.prompt-value-container-lIP4pF',
+    '.prompt-value-text-cJL62n',
+    '.prompt-value-H7u3lm'
+  ];
+  for (const selector of selectors) {
+    if (textOf(root.querySelector(selector))) {
+      return true;
+    }
+  }
+  const promptLabel = Array.from(root.querySelectorAll('*')).find(
+    (element) => textOf(element) === '图片提示词'
+  );
+  if (!promptLabel?.parentElement) {
+    return false;
+  }
+  const promptValue = Array.from(promptLabel.parentElement.children).find(
+    (element) => element !== promptLabel && textOf(element)
+  );
+  return Boolean(textOf(promptValue));
+}
+
+function hasAuthorAndDate(root: Document): boolean {
+  const textNodes = Array.from(root.querySelectorAll('span,div,p'))
+    .map((element) => textOf(element))
+    .filter(Boolean);
+  const dateIndex = textNodes.findIndex((value) => /^\d{4}-\d{2}-\d{2}$/.test(value));
+  return dateIndex > 0 && dateIndex < textNodes.length;
+}
+
+function hasAspectRatio(root: Document): boolean {
+  return Boolean(
+    findTagText(root, (value) => /^\d+:\d+$/.test(value))
+  );
+}
+
+function hasModelLabel(root: Document): boolean {
+  return Boolean(
+    findTagText(root, (value) => /^图片\s*\d+(?:\.\d+)?$/u.test(value))
+  );
+}
+
+export function getPageReadiness(root: Document): PageReadiness {
+  const url = root.defaultView?.location.href ?? globalThis.location?.href ?? '';
+  const workIdReady = Boolean(url.match(/\/work-detail\/([^/?]+)/)?.[1]);
+  const imageReady = Boolean(findPrimaryImageSource(root));
+  const promptReady = hasPrompt(root);
+  const metaReady = hasAuthorAndDate(root);
+  const tagsReady = hasAspectRatio(root) && hasModelLabel(root);
+
+  const items: ReadinessItem[] = [
+    { label: '作品信息', ready: workIdReady },
+    { label: '主图', ready: imageReady },
+    { label: '提示词', ready: promptReady },
+    { label: '作者与日期', ready: metaReady },
+    { label: '标签', ready: tagsReady }
+  ];
+
+  const weights = [5, 45, 30, 12, 8];
+  const percent = Math.round(
+    items.reduce((sum, item, i) => sum + (item.ready ? weights[i] : 0), 0)
+  );
+
+  return {
+    percent,
+    items,
+    // Tags (aspectRatio + modelLabel) are nice-to-have, not blocking.
+    allReady: items.slice(0, 4).every((item) => item.ready)
+  };
+}
+
 export function extractJimengDetailPayload(root: Document): CollectWorkPayload {
   const url = root.defaultView?.location.href ?? globalThis.location?.href ?? '';
   const workId = url.match(/\/work-detail\/([^/?]+)/)?.[1] ?? '';
   const { authorName, publishedAt } = findAuthorAndDate(root);
   const aspectRatio = findTagText(root, (value) => /^\d+:\d+$/.test(value));
-  const image = findPrimaryImage(root, aspectRatio);
-  const imageSourceUrl = image ? getImageSource(image) : '';
+  const imageSourceUrl = findPrimaryImageSource(root, aspectRatio);
 
   if (!imageSourceUrl) {
     throw new Error(

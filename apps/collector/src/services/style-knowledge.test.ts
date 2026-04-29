@@ -124,6 +124,13 @@ describe('deriveStyleNarrative', () => {
     expect(narrative.characteristics).toContain('刷痕');
   });
 
+  it('does not shorten database names that explicitly keep 风格', () => {
+    expect(deriveStyleDisplayName('动漫水彩风格')).toBe('动漫水彩风格');
+    expect(deriveStyleDisplayName('莫奈油画风格')).toBe('莫奈油画风格');
+    expect(deriveStyleDisplayName('水彩风格')).toBe('水彩风格');
+    expect(deriveStyleDisplayName('BJD风格')).toBe('BJD风格');
+  });
+
   it('returns curated narrative for hand-drawn style', () => {
     const narrative = deriveStyleNarrative({
       name: '手绘风格',
