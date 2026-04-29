@@ -20,7 +20,7 @@
   "content_scripts": [
     {
       "matches": [
-        "https://jimeng.jianying.com/ai-tool/*"
+        "https://jimeng.jianying.com/*"
       ],
       "js": [
         "content/index.global.js"

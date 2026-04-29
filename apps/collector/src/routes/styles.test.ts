@@ -152,15 +152,15 @@ describe('GET /api/styles', () => {
     });
     const detailRes = await app.inject({
       method: 'GET',
-      url: '/api/styles/moebius-jean-giraud'
+      url: '/api/styles/moebius-jean-giraud风格'
     });
 
     expect(listRes.statusCode).toBe(200);
     expect(listRes.json()).toEqual({
       items: [
         expect.objectContaining({
-          slug: 'moebius-jean-giraud',
-          name: 'Moebius (Jean Giraud)',
+          slug: 'moebius-jean-giraud风格',
+          name: 'Moebius (Jean Giraud)风格',
           termType: 'artist_style',
           shortDescription: expect.any(String),
           workCount: 1,
@@ -171,8 +171,8 @@ describe('GET /api/styles', () => {
     expect(detailRes.statusCode).toBe(200);
     expect(detailRes.json()).toEqual({
       item: expect.objectContaining({
-        slug: 'moebius-jean-giraud',
-        name: 'Moebius (Jean Giraud)',
+        slug: 'moebius-jean-giraud风格',
+        name: 'Moebius (Jean Giraud)风格',
         narrative: expect.objectContaining({
           overview: expect.stringContaining('Jean Giraud'),
           lineage: expect.stringContaining('法国-比利时漫画'),
@@ -230,7 +230,7 @@ describe('GET /api/styles', () => {
 
     const patchRes = await app.inject({
       method: 'PATCH',
-      url: '/api/styles/moebius-jean-giraud',
+      url: '/api/styles/moebius-jean-giraud风格',
       payload: {
         name: 'Moebius Atlas',
         status: 'active',

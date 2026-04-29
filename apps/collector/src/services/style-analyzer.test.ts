@@ -64,7 +64,7 @@ describe('OpenAIStyleAnalyzer', () => {
     });
 
     expect(result.candidates).toHaveLength(2);
-    expect(result.candidates[0]?.normalizedCandidate).toBe('Moebius (Jean Giraud)');
+    expect(result.candidates[0]?.normalizedCandidate).toBe('Moebius (Jean Giraud)风格');
   });
 
   it('uses json_object mode for direct Kimi API calls', async () => {
@@ -247,7 +247,7 @@ describe('OpenAIStyleAnalyzer', () => {
       promptRaw: 'Moebius (Jean Giraud)风格'
     });
 
-    expect(result.candidates[0]?.normalizedCandidate).toBe('Moebius (Jean Giraud)');
+    expect(result.candidates[0]?.normalizedCandidate).toBe('Moebius (Jean Giraud)风格');
     expect(analyzer.describe().model).toBe('xiaomi/mimo-v2.5');
   });
 
@@ -450,6 +450,62 @@ describe('OpenAIStyleAnalyzer', () => {
     );
   });
 
+  it('expands a model-generic medium term to the explicit 风格 phrase in the prompt', async () => {
+    const fetchMock = vi.fn(async () => {
+      return new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  candidates: [
+                    {
+                      rawTerm: '插画',
+                      normalizedCandidate: '插画',
+                      termType: 'medium_rendering',
+                      confidence: 0.9,
+                      shouldBeStyleTag: true,
+                      shortExplanation: 'prompt 中出现的媒介渲染词'
+                    }
+                  ]
+                })
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            'content-type': 'application/json'
+          }
+        }
+      );
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    const analyzer = new OpenAIStyleAnalyzer({
+      apiKey: 'test-key',
+      model: 'openai/gpt-5-mini',
+      baseUrl: 'https://api.openai.com/v1',
+      timeoutMs: 15000,
+      promptVersion: 'v1'
+    });
+
+    const result = await analyzer.analyzePrompt({
+      promptRaw: '治愈系高清壁纸，插画风格，一只巨大的粉白色沙猫。'
+    });
+
+    expect(result.candidates).toContainEqual(
+      expect.objectContaining({
+        rawTerm: '插画风格',
+        normalizedCandidate: '插画风格',
+        termType: 'medium_rendering',
+        shouldBeStyleTag: true
+      })
+    );
+  });
+
   it('prefers original prompt terms and drops model-translated style tags', async () => {
     const fetchMock = vi.fn(async () => {
       return new Response(
@@ -573,7 +629,7 @@ describe('OpenAIStyleAnalyzer', () => {
 
     expect(result.candidates).toEqual([
       expect.objectContaining({
-        normalizedCandidate: 'BJD'
+        normalizedCandidate: 'BJD风格'
       }),
       expect.objectContaining({
         normalizedCandidate: '水墨'

@@ -160,8 +160,8 @@ describe('GET /api/works', () => {
           ingestStatus: 'done',
           styles: [
             {
-              name: 'Moebius (Jean Giraud)',
-              slug: 'moebius-jean-giraud',
+              name: 'Moebius (Jean Giraud)风格',
+              slug: 'moebius-jean-giraud风格',
               status: 'active',
               isPrimary: true
             }
@@ -177,8 +177,8 @@ describe('GET /api/works', () => {
           'https://example.cos.ap-singapore.myqcloud.com/t2i-museum/originals/jimeng/works-route.webp',
         styles: [
           {
-            name: 'Moebius (Jean Giraud)',
-            slug: 'moebius-jean-giraud',
+            name: 'Moebius (Jean Giraud)风格',
+            slug: 'moebius-jean-giraud风格',
             status: 'active',
             isPrimary: true
           }

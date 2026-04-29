@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { normalizeStyleTerm, resolveCanonicalStyle } from './style-normalizer';
+import { createStyleSlug, normalizeStyleTerm, resolveCanonicalStyle } from './style-normalizer';
 
 describe('normalizeStyleTerm', () => {
   it('strips common style suffixes before alias lookup', () => {
@@ -21,7 +21,7 @@ describe('resolveCanonicalStyle', () => {
       shortExplanation: 'test'
     });
 
-    expect(resolved.name).toBe('Moebius (Jean Giraud)');
+    expect(resolved.name).toBe('Moebius (Jean Giraud)风格');
     expect(resolved.termType).toBe('artist_style');
   });
 
@@ -45,7 +45,7 @@ describe('resolveCanonicalStyle', () => {
       shortExplanation: 'test'
     });
 
-    expect(resolved.name).toBe('莫奈油画');
+    expect(resolved.name).toBe('莫奈油画风格');
     expect(resolved.termType).toBe('artist_style');
   });
 
@@ -91,5 +91,22 @@ describe('resolveCanonicalStyle', () => {
         shortExplanation: 'test'
       }).name
     ).toBe('水墨');
+  });
+
+  it('preserves a directly attached 风格 suffix as the database display name', () => {
+    const resolved = resolveCanonicalStyle({
+      rawTerm: '动漫水彩风格',
+      normalizedCandidate: '动漫水彩',
+      termType: 'medium_rendering',
+      shortExplanation: 'test'
+    });
+
+    expect(resolved.name).toBe('动漫水彩风格');
+    expect(resolved.aliases).toContain('动漫水彩');
+    expect(normalizeStyleTerm(resolved.name)).toBe(normalizeStyleTerm('动漫水彩'));
+  });
+
+  it('preserves 风格 in generated style slugs', () => {
+    expect(createStyleSlug('动漫水彩风格')).toBe('动漫水彩风格');
   });
 });

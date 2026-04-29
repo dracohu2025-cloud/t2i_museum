@@ -76,8 +76,7 @@ const DETAIL_IMAGE_SELECTORS = [
 ].join(',');
 
 function hasUsableImageSource(image: HTMLImageElement) {
-  const src = image.currentSrc || image.src;
-  return Boolean(src) && !src.startsWith('data:');
+  return Boolean(getImageSource(image));
 }
 
 function isVisibleImage(root: Document, image: HTMLImageElement) {
@@ -111,6 +110,34 @@ function isAspectRatioMatch(candidateRatio: number, expectedRatio: number) {
 
   const ratio = candidateRatio / expectedRatio;
   return ratio >= 0.9 && ratio <= 1.1;
+}
+
+function readFirstSrcsetUrl(srcset: string | null) {
+  return srcset
+    ?.split(',')
+    .map((item) => item.trim().split(/\s+/)[0])
+    .find(Boolean) ?? '';
+}
+
+function getImageSource(image: HTMLImageElement) {
+  const directSource =
+    image.currentSrc ||
+    image.src ||
+    image.getAttribute('src') ||
+    readFirstSrcsetUrl(image.getAttribute('srcset'));
+
+  if (directSource && !directSource.startsWith('data:')) {
+    return directSource;
+  }
+
+  const lazySource =
+    image.getAttribute('data-src') ||
+    image.getAttribute('data-original') ||
+    image.getAttribute('data-url') ||
+    image.getAttribute('data-image-url') ||
+    readFirstSrcsetUrl(image.closest('picture')?.querySelector('source')?.getAttribute('srcset') ?? null);
+
+  return lazySource && !lazySource.startsWith('data:') ? lazySource : '';
 }
 
 function findPromptElement(root: Document): Element | null {
@@ -147,12 +174,13 @@ function getDetailImages(root: Document) {
 export function hasLoadedJimengDetailImage(root: Document) {
   return getDetailImages(root).some((image) => {
     const metrics = getImageMetrics(image);
+    const source = getImageSource(image);
     return (
-      hasUsableImageSource(image) &&
+      Boolean(source) &&
       isVisibleImage(root, image) &&
       isViewportIntersecting(root, image) &&
-      metrics.width >= 300 &&
-      metrics.height >= 300
+      (metrics.width >= 300 || !isLikelyThumbnail(source)) &&
+      (metrics.height >= 300 || !isLikelyThumbnail(source))
     );
   });
 }
@@ -160,15 +188,22 @@ export function hasLoadedJimengDetailImage(root: Document) {
 function findPrimaryImage(root: Document, expectedAspectRatio?: string): HTMLImageElement | undefined {
   const expectedRatio = parseAspectRatio(expectedAspectRatio ?? '');
 
-  const buildCandidates = (images: HTMLImageElement[]) =>
+  const buildCandidates = (images: HTMLImageElement[], options: { allowUnmeasured?: boolean } = {}) =>
     images
       .filter((image) => hasUsableImageSource(image) && isVisibleImage(root, image))
       .map((image) => ({
         image,
+        source: getImageSource(image),
         metrics: getImageMetrics(image),
         isLoaded: image.naturalWidth > 0
       }))
-      .filter((c) => c.metrics.width >= 80 && c.metrics.height >= 80);
+      .filter((c) => {
+        if (c.metrics.width >= 80 && c.metrics.height >= 80) {
+          return true;
+        }
+
+        return Boolean(options.allowUnmeasured && c.source && !isLikelyThumbnail(c.source));
+      });
 
   const chooseWinner = (nextCandidates: ReturnType<typeof buildCandidates>) => {
     let candidates = nextCandidates;
@@ -183,7 +218,10 @@ function findPrimaryImage(root: Document, expectedAspectRatio?: string): HTMLIma
   };
 
   const detailWinner = chooseWinner(
-    buildCandidates(getDetailImages(root).filter((image) => isViewportIntersecting(root, image)))
+    buildCandidates(
+      getDetailImages(root).filter((image) => !isGalleryCoverImage(image) && isViewportIntersecting(root, image)),
+      { allowUnmeasured: true }
+    )
   );
   if (detailWinner) {
     return detailWinner.image;
@@ -191,7 +229,7 @@ function findPrimaryImage(root: Document, expectedAspectRatio?: string): HTMLIma
 
   let candidates = buildCandidates(Array.from(root.images))
     .filter((image) => {
-      const src = image.image.currentSrc || image.image.src;
+      const src = image.source;
       return !isLikelyThumbnail(src) && !isGalleryCoverImage(image.image) && isViewportIntersecting(root, image.image);
     });
 
@@ -236,7 +274,7 @@ export function extractJimengDetailPayload(root: Document): CollectWorkPayload {
   const { authorName, publishedAt } = findAuthorAndDate(root);
   const aspectRatio = findTagText(root, (value) => /^\d+:\d+$/.test(value));
   const image = findPrimaryImage(root, aspectRatio);
-  const imageSourceUrl = image?.currentSrc || image?.src || '';
+  const imageSourceUrl = image ? getImageSource(image) : '';
 
   if (!imageSourceUrl) {
     throw new Error(

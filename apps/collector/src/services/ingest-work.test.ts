@@ -247,7 +247,7 @@ describe('ingestWork', () => {
     const runs = db.prepare('SELECT status FROM analysis_runs').all() as Array<{ status: string }>;
 
     expect(styles).toEqual([
-      { name: 'Moebius (Jean Giraud)' },
+      { name: 'Moebius (Jean Giraud)风格' },
       { name: '极繁主义' }
     ]);
     expect(aliases.map((alias) => alias.alias_norm)).toEqual(

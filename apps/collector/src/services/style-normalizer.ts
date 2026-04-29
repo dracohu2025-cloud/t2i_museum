@@ -188,7 +188,7 @@ export const canonicalStyleRules: CanonicalStyleRule[] = [
   }
 ];
 
-function stripStyleSuffix(term: string): string {
+function stripLookupSuffix(term: string): string {
   return term
     .trim()
     .replace(/（/g, '(')
@@ -196,6 +196,19 @@ function stripStyleSuffix(term: string): string {
     .replace(/\s+/g, ' ')
     .replace(/(油画|水彩|水粉|版画|水墨)风\s*$/u, '$1')
     .replace(/(风格绘画|风格|画风|style)\s*$/iu, '')
+    .replace(/[，,。.;；:：]+$/g, '')
+    .trim();
+}
+
+function stripDisplayNoise(term: string): string {
+  return term
+    .trim()
+    .replace(/（/g, '(')
+    .replace(/）/g, ')')
+    .replace(/\s+/g, ' ')
+    .replace(/风格绘画\s*$/u, '风格')
+    .replace(/(油画|水彩|水粉|版画|水墨)风\s*$/u, '$1')
+    .replace(/(画风|style)\s*$/iu, '')
     .replace(/[，,。.;；:：]+$/g, '')
     .trim();
 }
@@ -209,11 +222,11 @@ function isAsciiOnly(text: string): boolean {
 }
 
 export function cleanStyleDisplayName(term: string): string {
-  return stripStyleSuffix(term);
+  return stripDisplayNoise(term);
 }
 
 export function normalizeStyleTerm(term: string): string {
-  return cleanStyleDisplayName(term).toLowerCase();
+  return stripLookupSuffix(term).toLowerCase();
 }
 
 /**
@@ -223,7 +236,7 @@ export function normalizeStyleTerm(term: string): string {
 export function sanitizePreviewTerm(term: string): string {
   if (!term) return term;
 
-  let cleaned = stripStyleSuffix(term.trim());
+  let cleaned = stripDisplayNoise(term.trim());
 
   // Strip leading grammatical particles (one or more passes)
   const leadingPattern =
@@ -246,7 +259,8 @@ export function sanitizePreviewTerm(term: string): string {
 }
 
 export function createStyleSlug(name: string): string {
-  const base = normalizeStyleTerm(name)
+  const base = cleanStyleDisplayName(name)
+    .toLowerCase()
     .replace(/[^a-z0-9\u4e00-\u9fff\s-]/g, '')
     .trim()
     .replace(/\s+/g, '-');
@@ -288,6 +302,17 @@ function findCanonicalStyleRule(term: string): CanonicalStyleRule | undefined {
   );
 }
 
+function directStyleSuffixName(...terms: string[]): string {
+  for (const term of terms) {
+    const displayName = cleanStyleDisplayName(term);
+    if (displayName.length > '风格'.length && displayName.endsWith('风格')) {
+      return displayName;
+    }
+  }
+
+  return '';
+}
+
 function chooseDisplayName(rawTerm: string, normalizedCandidate: string): string {
   const rawDisplay = cleanStyleDisplayName(rawTerm);
   const candidateDisplay = cleanStyleDisplayName(normalizedCandidate);
@@ -323,6 +348,24 @@ export function resolveCanonicalStyle(input: {
 }): ResolvedCanonicalStyle {
   const matchedRule =
     findCanonicalStyleRule(input.rawTerm) ?? findCanonicalStyleRule(input.normalizedCandidate);
+  const directStyleName = directStyleSuffixName(input.rawTerm, input.normalizedCandidate);
+
+  if (directStyleName) {
+    return {
+      name: directStyleName,
+      aliases: Array.from(
+        new Set([
+          input.rawTerm,
+          input.normalizedCandidate,
+          directStyleName,
+          matchedRule?.canonicalName ?? '',
+          ...(matchedRule?.aliases ?? [])
+        ])
+      ).filter(Boolean),
+      termType: matchedRule?.termType ?? resolveTermType(directStyleName, input.termType),
+      shortDescription: matchedRule?.shortDescription ?? input.shortExplanation
+    };
+  }
 
   if (matchedRule) {
     return {

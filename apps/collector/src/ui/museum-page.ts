@@ -1059,6 +1059,346 @@ export function renderMuseumPage() {
         background: rgba(255, 106, 106, 0.14);
       }
 
+      .masthead-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: center;
+        margin-top: 4px;
+      }
+
+      .anki-entry-button {
+        position: relative;
+        isolation: isolate;
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        min-height: 46px;
+        padding: 0 18px;
+        border: 1px solid rgba(235, 200, 139, 0.48);
+        border-radius: 999px;
+        background:
+          linear-gradient(135deg, rgba(235, 200, 139, 0.22), rgba(56, 189, 248, 0.12)),
+          rgba(255, 255, 255, 0.04);
+        color: var(--text);
+        font: inherit;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        cursor: pointer;
+        box-shadow: 0 16px 38px rgba(0, 0, 0, 0.28);
+        overflow: hidden;
+        transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+      }
+
+      .anki-entry-button::before {
+        content: "";
+        width: 18px;
+        height: 18px;
+        border-radius: 6px;
+        background:
+          linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(235, 200, 139, 0.45)),
+          linear-gradient(180deg, transparent 44%, rgba(7, 17, 27, 0.5) 46%, transparent 52%);
+        box-shadow: 0 6px 16px rgba(235, 200, 139, 0.22);
+        transform: rotate(-8deg);
+      }
+
+      .anki-entry-button:hover,
+      .anki-entry-button:focus-visible {
+        transform: translateY(-2px);
+        border-color: rgba(235, 200, 139, 0.8);
+        box-shadow: 0 22px 48px rgba(0, 0, 0, 0.34), 0 0 34px rgba(235, 200, 139, 0.16);
+        outline: none;
+      }
+
+      .anki-practice-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 120;
+        display: grid;
+        place-items: center;
+        padding: 28px;
+        background:
+          radial-gradient(circle at 28% 16%, rgba(56, 189, 248, 0.16), transparent 34%),
+          radial-gradient(circle at 82% 78%, rgba(235, 200, 139, 0.16), transparent 34%),
+          rgba(3, 7, 12, 0.82);
+        backdrop-filter: blur(18px);
+        perspective: 1600px;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 220ms ease;
+      }
+
+      .anki-practice-overlay[data-open="true"] {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      .anki-stage {
+        width: min(1120px, 100%);
+        max-height: min(860px, calc(100vh - 48px));
+        display: grid;
+        grid-template-columns: minmax(320px, 0.95fr) minmax(340px, 0.8fr);
+        gap: 22px;
+        align-items: stretch;
+        animation: ankiStageIn 360ms cubic-bezier(.2,.8,.2,1) both;
+      }
+
+      .anki-card-shell {
+        min-height: 560px;
+        transform-style: preserve-3d;
+        transform: rotateX(4deg) rotateY(-7deg) translateZ(0);
+        transition: transform 260ms ease;
+      }
+
+      .anki-card-shell:hover {
+        transform: rotateX(2deg) rotateY(-3deg) translateY(-2px);
+      }
+
+      .anki-card-inner {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        min-height: 560px;
+        transform-style: preserve-3d;
+        transition: transform 560ms cubic-bezier(.2,.8,.2,1);
+      }
+
+      .anki-card-shell[data-answered="true"] .anki-card-inner {
+        transform: rotateY(180deg);
+      }
+
+      .anki-card-face {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        border: 1px solid rgba(235, 200, 139, 0.28);
+        border-radius: 34px;
+        background: rgba(7, 17, 27, 0.96);
+        box-shadow: 0 34px 88px rgba(0, 0, 0, 0.56);
+        backface-visibility: hidden;
+      }
+
+      .anki-card-face img {
+        width: 100%;
+        height: 100%;
+        min-height: 560px;
+        object-fit: cover;
+        display: block;
+        filter: saturate(1.08) contrast(1.04);
+      }
+
+      .anki-card-face::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(180deg, rgba(4, 10, 18, 0.02), rgba(4, 10, 18, 0.78));
+      }
+
+      .anki-card-caption {
+        position: absolute;
+        left: 22px;
+        right: 22px;
+        bottom: 20px;
+        z-index: 1;
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: end;
+      }
+
+      .anki-card-caption strong {
+        font-family: "Cormorant Garamond", serif;
+        font-size: clamp(34px, 4vw, 56px);
+        line-height: 0.9;
+      }
+
+      .anki-card-back {
+        display: grid;
+        place-items: center;
+        padding: 34px;
+        transform: rotateY(180deg);
+        text-align: center;
+      }
+
+      .anki-card-back h3 {
+        margin: 0;
+        font-family: "Cormorant Garamond", serif;
+        font-size: clamp(42px, 5vw, 72px);
+        line-height: 0.9;
+      }
+
+      .anki-card-back p {
+        margin: 16px auto 0;
+        max-width: 520px;
+        color: var(--muted);
+        line-height: 1.7;
+      }
+
+      .anki-panel {
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 30px;
+        background:
+          linear-gradient(180deg, rgba(10, 25, 41, 0.94), rgba(6, 14, 24, 0.96)),
+          rgba(255, 255, 255, 0.04);
+        box-shadow: var(--shadow);
+        padding: 24px;
+        display: grid;
+        align-content: start;
+        gap: 18px;
+      }
+
+      .anki-panel-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: start;
+      }
+
+      .anki-panel h2 {
+        margin: 6px 0 0;
+        font-family: "Cormorant Garamond", serif;
+        font-size: clamp(38px, 4vw, 58px);
+        line-height: 0.92;
+      }
+
+      .anki-close-button {
+        width: 38px;
+        height: 38px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.04);
+        color: var(--text);
+        cursor: pointer;
+      }
+
+      .anki-score-row {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .anki-score-row article {
+        padding: 12px;
+        border-radius: 16px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(255, 255, 255, 0.04);
+      }
+
+      .anki-score-row span {
+        display: block;
+        color: var(--muted);
+        font-size: 11px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      .anki-score-row strong {
+        display: block;
+        margin-top: 6px;
+        font-size: 22px;
+      }
+
+      .anki-option-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .anki-option {
+        width: 100%;
+        min-height: 52px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.045);
+        color: var(--text);
+        font: inherit;
+        font-weight: 700;
+        text-align: left;
+        padding: 14px 16px;
+        cursor: pointer;
+        transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+      }
+
+      .anki-option:hover:not(:disabled),
+      .anki-option:focus-visible {
+        transform: translateY(-1px);
+        border-color: rgba(235, 200, 139, 0.56);
+        background: rgba(235, 200, 139, 0.12);
+        outline: none;
+      }
+
+      .anki-option[data-result="correct"] {
+        border-color: rgba(74, 222, 128, 0.7);
+        background: rgba(34, 197, 94, 0.16);
+      }
+
+      .anki-option[data-result="wrong"] {
+        border-color: rgba(248, 113, 113, 0.7);
+        background: rgba(239, 68, 68, 0.15);
+      }
+
+      .anki-feedback {
+        min-height: 58px;
+        padding: 14px 16px;
+        border-radius: 18px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: rgba(255, 255, 255, 0.04);
+        color: var(--muted);
+        line-height: 1.6;
+      }
+
+      .anki-feedback[data-kind="correct"] {
+        color: #bbf7d0;
+        border-color: rgba(74, 222, 128, 0.42);
+      }
+
+      .anki-feedback[data-kind="wrong"] {
+        color: #fecaca;
+        border-color: rgba(248, 113, 113, 0.42);
+      }
+
+      .anki-actions {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .anki-empty {
+        width: min(620px, 100%);
+        padding: 34px;
+        border-radius: 30px;
+        border: 1px solid var(--line);
+        background: var(--panel-strong);
+        box-shadow: var(--shadow);
+        text-align: center;
+      }
+
+      @keyframes ankiStageIn {
+        from {
+          opacity: 0;
+          transform: translateY(26px) scale(0.98);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .anki-stage,
+        .anki-card-inner,
+        .anki-entry-button,
+        .anki-option {
+          animation: none;
+          transition: none;
+        }
+
+        .anki-card-shell,
+        .anki-card-shell:hover,
+        .anki-card-shell[data-answered="true"] .anki-card-inner {
+          transform: none;
+        }
+      }
+
       .alias-cloud {
         display: flex;
         flex-wrap: wrap;
@@ -1143,6 +1483,18 @@ export function renderMuseumPage() {
         .style-list {
           max-height: min(52vh, 520px);
         }
+
+        .anki-stage {
+          grid-template-columns: 1fr;
+          max-height: calc(100vh - 32px);
+          overflow: auto;
+        }
+
+        .anki-card-shell,
+        .anki-card-inner,
+        .anki-card-face img {
+          min-height: 420px;
+        }
       }
 
       @media (max-width: 720px) {
@@ -1225,6 +1577,23 @@ export function renderMuseumPage() {
         .style-list {
           max-height: 44vh;
         }
+
+        .anki-practice-overlay {
+          padding: 12px;
+        }
+
+        .anki-stage {
+          gap: 12px;
+        }
+
+        .anki-panel {
+          padding: 18px;
+          border-radius: 24px;
+        }
+
+        .anki-score-row {
+          grid-template-columns: 1fr;
+        }
       }
     </style>
   </head>
@@ -1240,6 +1609,9 @@ export function renderMuseumPage() {
             <p class="lede">
               收集即梦图片样例，自动抽取绘画风格词，并把图片、风格、含义串成一个可学习和浏览的本地视觉库。
             </p>
+            <div class="masthead-actions">
+              <button class="anki-entry-button" id="anki-start-button" type="button">Anki 风格测试</button>
+            </div>
           </div>
         </div>
         <div class="stats" id="stats"></div>
@@ -1267,6 +1639,7 @@ export function renderMuseumPage() {
         <section id="content"></section>
       </section>
     </main>
+    <section class="anki-practice-overlay" id="anki-practice-overlay" data-open="false" aria-hidden="true"></section>
 
     <script>
       const statsNode = document.getElementById('stats');
@@ -1276,6 +1649,8 @@ export function renderMuseumPage() {
       const styleShelfQueryNode = document.getElementById('style-shelf-query');
       const contentNode = document.getElementById('content');
       const homeLinkNode = document.getElementById('museum-home-link');
+      const ankiStartButtonNode = document.getElementById('anki-start-button');
+      const ankiOverlayNode = document.getElementById('anki-practice-overlay');
       let stickyStyleTitleCleanup = null;
       const state = {
         works: [],
@@ -1285,6 +1660,15 @@ export function renderMuseumPage() {
         styleQuery: '',
         styleTermFilter: 'all',
         adminPanelOpen: false,
+        anki: {
+          deck: [],
+          current: null,
+          answered: false,
+          selectedOption: '',
+          totalCount: 0,
+          correctCount: 0,
+          streak: 0
+        },
         flash: null
       };
 
@@ -1692,6 +2076,323 @@ export function renderMuseumPage() {
             <div class="gallery">\${works.map(renderWorkCard).join('')}</div>
           </section>
         \`;
+      }
+
+      function uniqueByName(items) {
+        const seen = new Set();
+        return items.filter((item) => {
+          const name = String(item?.name || '').trim();
+          if (!name || seen.has(name)) {
+            return false;
+          }
+          seen.add(name);
+          return true;
+        });
+      }
+
+      function getAnkiStyleTags(work) {
+        return uniqueByName(
+          (work.styles || []).filter((style) => style.status !== 'ignored' && style.name)
+        );
+      }
+
+      function shuffle(items) {
+        const next = [...items];
+        for (let index = next.length - 1; index > 0; index -= 1) {
+          const swapIndex = Math.floor(Math.random() * (index + 1));
+          [next[index], next[swapIndex]] = [next[swapIndex], next[index]];
+        }
+        return next;
+      }
+
+      function buildAnkiDeck(cards, styles) {
+        const styleNames = uniqueByName(
+          styles
+            .filter((style) => style.status !== 'ignored' && style.name)
+            .map((style) => ({ name: style.name }))
+        ).map((style) => style.name);
+
+        return cards
+          .filter((card) => card.imageUrl && card.answer?.name)
+          .map((card) => {
+            const answer = card.answer.name;
+            const work = {
+              workId: card.workId,
+              sourceWorkId: card.sourceWorkId,
+              promptRaw: card.promptRaw,
+              imageUrl: card.imageUrl,
+              modelLabel: card.modelLabel,
+              aspectRatio: card.aspectRatio,
+              styles: [
+                {
+                  name: answer,
+                  slug: card.answer.slug,
+                  status: 'active',
+                  isPrimary: true
+                }
+              ]
+            };
+            const workFromMuseum = state.works.find((item) => item.workId === card.workId);
+            return {
+              apiCard: card,
+              work: workFromMuseum ?? work,
+              answer,
+              answerSlug: card.answer.slug,
+              review: card.review,
+              styleNames
+            };
+          }));
+      }
+
+      function drawAnkiCard() {
+        if (!state.anki.deck.length) {
+          state.anki.current = null;
+          state.anki.answered = false;
+          state.anki.selectedOption = '';
+          return;
+        }
+
+        const dueCards = state.anki.deck.filter((item) => item.review?.isDue);
+        const lapsedDueCards = dueCards.filter((item) => (item.review?.lapses || 0) > 0);
+        const pool = lapsedDueCards.length ? lapsedDueCards : dueCards.length ? dueCards : state.anki.deck;
+        const deckItem = pool[Math.floor(Math.random() * pool.length)];
+        const answer = deckItem.answer;
+        const workStyles = getAnkiStyleTags(deckItem.work);
+        const workStyleNames = new Set(workStyles.map((style) => style.name));
+        const distractors = shuffle(
+          deckItem.styleNames.filter((name) => name !== answer && !workStyleNames.has(name))
+        );
+        const fallbackDistractors = shuffle(
+          state.works
+            .flatMap((work) => getAnkiStyleTags(work).map((style) => style.name))
+            .filter((name) => name !== answer && !workStyleNames.has(name))
+        );
+        const optionNames = uniqueByName(
+          [answer, ...distractors, ...fallbackDistractors].map((name) => ({ name }))
+        )
+          .slice(0, 4)
+          .map((item) => item.name);
+
+        state.anki.current = {
+          apiCard: deckItem.apiCard,
+          work: deckItem.work,
+          answer,
+          answerSlug: deckItem.answerSlug,
+          review: deckItem.review,
+          options: shuffle(optionNames.length >= 2 ? optionNames : [answer])
+        };
+        state.anki.answered = false;
+        state.anki.selectedOption = '';
+      }
+
+      function closeAnkiPractice() {
+        state.anki.current = null;
+        if (ankiOverlayNode) {
+          ankiOverlayNode.dataset.open = 'false';
+          ankiOverlayNode.setAttribute('aria-hidden', 'true');
+          ankiOverlayNode.innerHTML = '';
+        }
+        document.body.style.overflow = '';
+      }
+
+      async function openAnkiPractice() {
+        if (ankiOverlayNode) {
+          ankiOverlayNode.dataset.open = 'true';
+          ankiOverlayNode.setAttribute('aria-hidden', 'false');
+          ankiOverlayNode.innerHTML = '<article class="anki-empty"><div class="eyebrow">Anki Drill</div><h2 class="style-hero-title">正在整理复习队列</h2><p class="work-meta">正在读取 /api/anki/cards，并优先安排到期与答错卡片。</p></article>';
+        }
+        document.body.style.overflow = 'hidden';
+        try {
+          const cardsPayload = await loadJson('/api/anki/cards');
+          state.anki.deck = buildAnkiDeck(cardsPayload.items ?? [], state.styles);
+        } catch {
+          state.anki.deck = [];
+        }
+        state.anki.totalCount = 0;
+        state.anki.correctCount = 0;
+        state.anki.streak = 0;
+        drawAnkiCard();
+        renderAnkiOverlay();
+      }
+
+      function renderAnkiEmpty() {
+        return \`
+          <article class="anki-empty">
+            <div class="eyebrow">Anki Drill</div>
+            <h2 class="style-hero-title">还没有可测试的卡片</h2>
+            <p class="work-meta">需要至少一张已入馆图片，并且这张图带有非 ignored 风格关键词。先继续采集几张作品，再回来做风格记忆练习。</p>
+            <div class="button-row" style="justify-content:center; margin-top: 18px;">
+              <button class="action-button" data-anki-close type="button">返回 museum</button>
+            </div>
+          </article>
+        \`;
+      }
+
+      function renderAnkiOverlay() {
+        if (!ankiOverlayNode) {
+          return;
+        }
+
+        ankiOverlayNode.dataset.open = 'true';
+        ankiOverlayNode.setAttribute('aria-hidden', 'false');
+        document.body.style.overflow = 'hidden';
+
+        const card = state.anki.current;
+        if (!card) {
+          ankiOverlayNode.innerHTML = renderAnkiEmpty();
+          bindAnkiOverlay();
+          return;
+        }
+
+        const correct = state.anki.answered && state.anki.selectedOption === card.answer;
+        const feedbackKind = !state.anki.answered ? '' : correct ? 'correct' : 'wrong';
+        const feedbackText = !state.anki.answered
+          ? (card.review?.isDue
+              ? '这张卡已经到期，或曾经答错过。观察图像的线条、色彩、材质和构图，再选择风格关键词。'
+              : '这张卡还未到期，但可以继续自由练习。')
+          : correct
+            ? \`答对了。下一次复习会延后到 \${card.review?.dueAt || '未来某个时间'}。\`
+            : \`这张图包含的是“\${card.answer}”。这张卡会保持到期，稍后更容易再次抽到。\`;
+        const visibleStyles = getAnkiStyleTags(card.work).map((style) => style.name).join(' · ');
+
+        ankiOverlayNode.innerHTML = \`
+          <section class="anki-stage" role="dialog" aria-modal="true" aria-label="Anki 风格测试">
+            <article class="anki-card-shell" data-answered="\${String(state.anki.answered)}">
+              <div class="anki-card-inner">
+                <div class="anki-card-face">
+                  <img src="\${escapeHtml(card.work.imageUrl)}" alt="\${escapeHtml(card.work.sourceWorkId)}" />
+                  <div class="anki-card-caption">
+                    <strong>Recall</strong>
+                    <span class="tag">\${escapeHtml(card.work.modelLabel || '模型未知')}</span>
+                  </div>
+                </div>
+                <div class="anki-card-face anki-card-back">
+                  <div>
+                    <div class="eyebrow">\${correct ? 'Correct Recall' : 'Style Revealed'}</div>
+                    <h3>\${escapeHtml(card.answer)}</h3>
+                    <p>\${escapeHtml(card.work.promptRaw || '')}</p>
+                  </div>
+                </div>
+              </div>
+            </article>
+            <aside class="anki-panel">
+              <div class="anki-panel-head">
+                <div>
+                  <div class="eyebrow">Anki 风格测试</div>
+                  <h2>这张图包含哪个风格关键词？</h2>
+                </div>
+                <button class="anki-close-button" data-anki-close type="button" aria-label="关闭 Anki 测试">×</button>
+              </div>
+              <div class="anki-score-row">
+                <article><span>Cards</span><strong>\${state.anki.totalCount}</strong></article>
+                <article><span>Correct</span><strong>\${state.anki.correctCount}</strong></article>
+                <article><span>Streak</span><strong>\${state.anki.streak}</strong></article>
+              </div>
+              <div class="work-meta">
+                复习状态：\${card.review?.isDue ? '已到期' : '未到期'} · 已复习 \${card.review?.reviewCount ?? 0} 次 · 错误 \${card.review?.lapses ?? 0} 次
+              </div>
+              <div class="anki-option-list">
+                \${card.options
+                  .map((option, index) => {
+                    const result =
+                      !state.anki.answered
+                        ? ''
+                        : option === card.answer
+                          ? 'correct'
+                          : option === state.anki.selectedOption
+                            ? 'wrong'
+                            : '';
+                    return \`
+                      <button class="anki-option" data-anki-option="\${index}" data-result="\${result}" type="button" \${state.anki.answered ? 'disabled' : ''}>
+                        \${escapeHtml(option)}
+                      </button>
+                    \`;
+                  })
+                  .join('')}
+              </div>
+              <div class="anki-feedback" data-kind="\${feedbackKind}">
+                \${escapeHtml(feedbackText)}
+              </div>
+              <div class="work-meta">本图所有可见风格：\${escapeHtml(visibleStyles || '暂无')}</div>
+              <div class="anki-actions">
+                <button class="action-button" data-anki-next type="button">\${state.anki.answered ? '下一张卡片' : '跳过此卡'}</button>
+                <a class="action-button" data-variant="ghost" href="/museum/works/\${encodeURIComponent(card.work.sourceWorkId)}" data-anki-work-link>查看作品详情</a>
+              </div>
+            </aside>
+          </section>
+        \`;
+
+        bindAnkiOverlay();
+      }
+
+      async function answerAnki(option) {
+        if (!state.anki.current || state.anki.answered) {
+          return;
+        }
+
+        state.anki.selectedOption = option;
+        state.anki.answered = true;
+        state.anki.totalCount += 1;
+        const isCorrect = option === state.anki.current.answer;
+        if (isCorrect) {
+          state.anki.correctCount += 1;
+          state.anki.streak += 1;
+        } else {
+          state.anki.streak = 0;
+        }
+
+        try {
+          const payload = await requestJson('/api/anki/reviews', {
+            method: 'POST',
+            body: JSON.stringify({
+              workId: state.anki.current.work.workId,
+              styleSlug: state.anki.current.answerSlug,
+              correct: isCorrect
+            })
+          });
+          const updated = payload.item;
+          state.anki.current.review = updated.review;
+          state.anki.deck = state.anki.deck.map((item) =>
+            item.apiCard.cardId === updated.cardId
+              ? {
+                  ...item,
+                  apiCard: updated,
+                  review: updated.review
+                }
+              : item
+          );
+        } catch {
+          state.anki.current.review = {
+            ...(state.anki.current.review ?? {}),
+            isDue: !isCorrect
+          };
+        }
+        renderAnkiOverlay();
+      }
+
+      function bindAnkiOverlay() {
+        ankiOverlayNode?.querySelectorAll('[data-anki-close]').forEach((button) => {
+          button.addEventListener('click', closeAnkiPractice);
+        });
+
+        ankiOverlayNode?.querySelectorAll('[data-anki-option]').forEach((button) => {
+          button.addEventListener('click', () => {
+            const index = Number(button.getAttribute('data-anki-option'));
+            const option = state.anki.current?.options?.[index];
+            if (option) {
+              void answerAnki(option);
+            }
+          });
+        });
+
+        ankiOverlayNode?.querySelector('[data-anki-next]')?.addEventListener('click', () => {
+          drawAnkiCard();
+          renderAnkiOverlay();
+        });
+
+        ankiOverlayNode?.querySelector('[data-anki-work-link]')?.addEventListener('click', () => {
+          closeAnkiPractice();
+        });
       }
 
       function renderStyleTypeOptions(currentType) {
@@ -2392,6 +3093,15 @@ export function renderMuseumPage() {
         const activeWorkId = workMatch ? decodeURIComponent(workMatch[1]) : '';
         await loadMuseumState(activeSlug, activeWorkId, false);
       }
+
+      ankiStartButtonNode?.addEventListener('click', () => {
+        void openAnkiPractice();
+      });
+      window.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && ankiOverlayNode?.dataset.open === 'true') {
+          closeAnkiPractice();
+        }
+      });
 
       if (styleShelfQueryNode instanceof HTMLInputElement) {
         styleShelfQueryNode.addEventListener('input', () => {

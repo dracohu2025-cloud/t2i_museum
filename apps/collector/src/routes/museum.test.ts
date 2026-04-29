@@ -22,6 +22,13 @@ describe('GET /museum', () => {
     expect(res.body).toContain('/api/styles');
     expect(res.body).toContain('/api/works/');
     expect(res.body).toContain('work-delete-trigger');
+    expect(res.body).toContain('id="anki-start-button"');
+    expect(res.body).toContain('id="anki-practice-overlay"');
+    expect(res.body).toContain('Anki 风格测试');
+    expect(res.body).toContain('buildAnkiDeck');
+    expect(res.body).toContain('/api/anki/cards');
+    expect(res.body).toContain('/api/anki/reviews');
+    expect(res.body).toContain('anki-card-shell');
 
     const workRes = await app.inject({
       method: 'GET',

@@ -1,7 +1,7 @@
 import {
   COLLECT_RUNTIME_MESSAGE,
   COLLECT_PREVIEW_RUNTIME_MESSAGE,
-  JIMENG_AI_TOOL_URL_PREFIX,
+  JIMENG_URL_PREFIX,
   LOCAL_COLLECT_API_URL,
   LOCAL_COLLECT_PREVIEW_API_URL,
   LOCAL_STYLES_LOOKUP_API_URL,
@@ -110,7 +110,7 @@ async function ensureJimengContentScript(tabId: number, url = '') {
     return;
   }
 
-  if (!url.startsWith(JIMENG_AI_TOOL_URL_PREFIX)) {
+  if (!url.startsWith(JIMENG_URL_PREFIX)) {
     return;
   }
 
@@ -136,7 +136,7 @@ async function ensureExistingJimengTabs() {
 
   try {
     const tabs = await tabsApi.query({
-      url: `${JIMENG_AI_TOOL_URL_PREFIX}*`
+      url: `${JIMENG_URL_PREFIX}*`
     });
 
     await Promise.all(
@@ -168,7 +168,7 @@ function registerNavigationListener(
       void ensureJimengContentScript(details.tabId, details.url ?? '');
     },
     {
-      url: [{ urlPrefix: JIMENG_AI_TOOL_URL_PREFIX }]
+      url: [{ urlPrefix: JIMENG_URL_PREFIX }]
     }
   );
 }

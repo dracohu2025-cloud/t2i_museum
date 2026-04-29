@@ -4,6 +4,7 @@ import type Database from 'better-sqlite3';
 import { resolveConfig, type CollectorConfig } from './config';
 import { openDatabase } from './db/client';
 import { runMigrations } from './db/migrate';
+import { registerAnkiRoute } from './routes/anki';
 import { registerCollectRoute } from './routes/collect';
 import { registerHealthRoute } from './routes/health';
 import { registerMediaRoute } from './routes/media';
@@ -55,6 +56,7 @@ export function buildApp(options: BuildAppOptions = {}) {
   app.decorate('imageUploader', imageUploader);
   app.decorate('styleEnrichmentQueue', styleEnrichmentQueue);
   void registerHealthRoute(app);
+  void registerAnkiRoute(app);
   void registerCollectRoute(app);
   void registerWorksRoute(app);
   void registerStylesRoute(app);

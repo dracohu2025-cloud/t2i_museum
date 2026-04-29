@@ -834,6 +834,19 @@ function applyPromptAnchoredOverrides(
 }
 
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function findPromptAdjacentStylePhrase(term: string, promptRaw: string): string {
+  const trimmed = term.trim();
+  if (!trimmed || trimmed.endsWith('风格')) {
+    return '';
+  }
+
+  return promptRaw.match(new RegExp(`${escapeRegExp(trimmed)}风格`, 'iu'))?.[0] ?? '';
+}
+
 function filterModelCandidatesByPrompt(
   result: StyleAnalysisResult,
   promptRaw: string
@@ -841,17 +854,36 @@ function filterModelCandidatesByPrompt(
   const normalizedPrompt = promptRaw.toLowerCase();
 
   return {
-    candidates: result.candidates.filter((candidate) => {
+    candidates: result.candidates.flatMap((candidate) => {
       const rawTerm = candidate.rawTerm.trim().toLowerCase();
       const normalizedCandidate = candidate.normalizedCandidate.trim().toLowerCase();
+      const promptStylePhrase =
+        findPromptAdjacentStylePhrase(candidate.rawTerm, promptRaw) ||
+        findPromptAdjacentStylePhrase(candidate.normalizedCandidate, promptRaw);
 
-      return (
+      const isPromptAnchored = (
         rawTerm.length > 0 &&
         normalizedPrompt.includes(rawTerm)
       ) || (
         normalizedCandidate.length > 0 &&
         normalizedPrompt.includes(normalizedCandidate)
       );
+
+      if (!isPromptAnchored) {
+        return [];
+      }
+
+      if (!promptStylePhrase) {
+        return [candidate];
+      }
+
+      return [
+        {
+          ...candidate,
+          rawTerm: promptStylePhrase,
+          normalizedCandidate: promptStylePhrase
+        }
+      ];
     })
   };
 }

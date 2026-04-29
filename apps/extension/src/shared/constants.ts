@@ -1,4 +1,5 @@
 export const JIMENG_DETAIL_PATH_SEGMENT = '/ai-tool/work-detail/';
+export const JIMENG_URL_PREFIX = 'https://jimeng.jianying.com/';
 export const JIMENG_AI_TOOL_URL_PREFIX = 'https://jimeng.jianying.com/ai-tool/';
 export const LOCAL_COLLECT_API_URL = 'http://127.0.0.1:4317/api/collect';
 export const LOCAL_COLLECT_PREVIEW_API_URL = 'http://127.0.0.1:4317/api/collect/preview';

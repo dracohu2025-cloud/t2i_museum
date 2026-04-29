@@ -76,7 +76,7 @@ function trimLeadingDot(pathValue: string): string {
   return pathValue.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/g, '');
 }
 
-function toPublicImageUrl(imageLocalPath: string, dataDir: string, cosUrl = ''): string {
+export function toPublicImageUrl(imageLocalPath: string, dataDir: string, cosUrl = ''): string {
   if (cosUrl) {
     return cosUrl;
   }
